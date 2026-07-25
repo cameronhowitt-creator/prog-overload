@@ -1,9 +1,16 @@
-// Pure display formatters — safe to import from client components.
+// Pure display formatters — safe to import from client components. Weight values
+// are canonical kg; formatters take the user's units preference (PRD §6.6).
 
 import type { LastTime, PRReference } from "./types";
+import {
+  displayWeightNumber,
+  formatWeight,
+  type UnitsPreference,
+} from "./units";
 
-export function fmtWeight(w: number | null): string {
-  return w === null ? "BW" : `${w}`;
+// Canonical kg → the plain number in the user's unit (for the prescription line).
+export function fmtWeight(kg: number | null, units: UnitsPreference): string {
+  return kg === null ? "BW" : `${displayWeightNumber(kg, units)}`;
 }
 
 export function fmtReps(low: number, high: number): string {
@@ -18,16 +25,15 @@ export function fmtRest(low: number, high: number): string {
   return `${lo}–${hi.replace(" min", "")} min`.replace("ss", "s");
 }
 
-export function fmtLastTime(lt: LastTime | null): string {
+export function fmtLastTime(lt: LastTime | null, units: UnitsPreference): string {
   if (!lt) return "—";
-  const load = lt.weight ? `${lt.weight} lb` : "BW";
+  const load = lt.weight ? formatWeight(lt.weight, units) : "BW";
   return `${load} × ${lt.sets}×${lt.reps}`;
 }
 
-export function fmtPR(pr: PRReference | null): string {
+export function fmtPR(pr: PRReference | null, units: UnitsPreference): string {
   if (!pr) return "—";
-  const load = pr.weight ? `${pr.weight} lb` : "BW";
-  return `${load}`;
+  return pr.weight ? formatWeight(pr.weight, units) : "BW";
 }
 
 export function fmtShortDate(iso: string): string {

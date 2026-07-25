@@ -1,5 +1,6 @@
 import { getRepo, getUserId } from "@/lib/db";
 import { CATEGORY_LABEL, fmtShortDate } from "@/lib/domain/format";
+import { formatWeight, resolveUnits } from "@/lib/domain/units";
 import type { MovementCategory } from "@/lib/domain/types";
 import LiftChart from "./LiftChart";
 
@@ -11,11 +12,13 @@ export default async function HistoryPage() {
   const repo = getRepo();
   const userId = getUserId();
 
-  const [sets, prs, exercises] = await Promise.all([
+  const [sets, prs, exercises, profile] = await Promise.all([
     repo.listLoggedSets(userId),
     repo.listPRs(userId, { onlyCurrent: true }),
     repo.listExercises(),
+    repo.getProfile(userId),
   ]);
+  const units = resolveUnits(profile.unitsPreference);
 
   const exById = new Map(exercises.map((e) => [e.id, e]));
 
@@ -103,7 +106,7 @@ export default async function HistoryPage() {
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 2l2.9 6.6L22 9.3l-5 4.9 1.2 7.1L12 17.8l-6.2 3.5L7 14.2 2 9.3l7.1-.7z" />
                       </svg>
-                      {r.prWeight} lb PR
+                      {formatWeight(r.prWeight, units)} PR
                     </div>
                   )}
                 </div>
@@ -113,8 +116,9 @@ export default async function HistoryPage() {
                     {r.prBucket ? `${r.prBucket} rep bucket` : "logged"}
                   </span>
                   <span>
-                    Last: <b>{r.lastWeight ? `${r.lastWeight} lb` : "BW"}</b> ×{" "}
-                    {r.lastReps} on {fmtShortDate(r.lastDate)}
+                    Last:{" "}
+                    <b>{r.lastWeight ? formatWeight(r.lastWeight, units) : "BW"}</b>{" "}
+                    × {r.lastReps} on {fmtShortDate(r.lastDate)}
                   </span>
                 </div>
               </div>

@@ -81,11 +81,18 @@ export async function swapLiftAction(input: {
   const newExercise = await repo.getExercise(input.newExerciseId);
   if (!newExercise) return;
 
-  const newLift = await buildSwapLift(repo, userId, newExercise, {
-    sets: original.sets,
-    repLow: original.repLow,
-    repHigh: original.repHigh,
-  });
+  const profile = await repo.getProfile(userId);
+  const newLift = await buildSwapLift(
+    repo,
+    userId,
+    newExercise,
+    {
+      sets: original.sets,
+      repLow: original.repLow,
+      repHigh: original.repHigh,
+    },
+    profile.unitsPreference,
+  );
 
   const lifts = [...session.program.lifts];
   lifts[idx] = newLift;

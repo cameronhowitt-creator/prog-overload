@@ -5,7 +5,16 @@ import type {
   ApproxDate,
   OnboardingLiftEntry,
   Profile,
+  UnitsPreference,
 } from "@/lib/domain/types";
+import {
+  displayHeight,
+  displayWeightNumber,
+  heightToCanonicalCm,
+  resolveUnits,
+  toCanonicalWeightKg,
+  weightUnit,
+} from "@/lib/domain/units";
 import {
   completeOnboardingAction,
   saveActiveLiftsAction,
@@ -22,9 +31,11 @@ export type OnboardingLift = {
 type Group = { label: string; lifts: OnboardingLift[] };
 type BaselineDraft = { weight: string; reps: string; approxDate: ApproxDate };
 
-// Ordered steps. `data` steps persist on advance; welcome/confirm don't.
+// Ordered steps. `data` steps persist on advance; welcome/confirm don't. Units is
+// the FIRST data step so weight/height inputs downstream are in the right unit.
 const STEPS = [
   "welcome",
+  "units",
   "basic",
   "goals",
   "logistics",
@@ -71,12 +82,21 @@ export default function OnboardingFlow({
   const step: Step = STEPS[stepIdx];
   const [pending, startTransition] = useTransition();
 
-  // Profile form fields (numbers kept as strings for inputs).
+  // Prefill height/weight in the user's stored unit (or blank for a new user).
+  const initUnits = resolveUnits(prefill.unitsPreference);
+  const hd = prefill.heightCm != null ? displayHeight(prefill.heightCm, initUnits) : null;
+
+  // Profile form fields (numbers kept as strings for inputs; weight/height are in
+  // DISPLAY units and converted to canonical kg/cm on save).
   const [f, setF] = useState({
+    unitsPreference: (prefill.unitsPreference ?? "") as UnitsPreference | "",
     name: prefill.name ?? "",
     age: prefill.age?.toString() ?? "",
-    heightCm: prefill.heightCm?.toString() ?? "",
-    weightKg: prefill.weightKg?.toString() ?? "",
+    heightCm: hd && "cm" in hd ? String(hd.cm) : "",
+    heightFt: hd && "feet" in hd ? String(hd.feet) : "",
+    heightIn: hd && "inches" in hd ? String(hd.inches) : "",
+    weight:
+      prefill.weightKg != null ? String(displayWeightNumber(prefill.weightKg, initUnits)) : "",
     primaryGoal: prefill.primaryGoal ?? "",
     experienceLevel: prefill.experienceLevel ?? "",
     daysPerWeek: prefill.daysPerWeek?.toString() ?? "",
@@ -110,11 +130,24 @@ export default function OnboardingFlow({
 
   const num = (s: string) => (s.trim() ? Number(s) : undefined);
 
-  // The profile patch for a given step (only that step's fields).
+  const units = resolveUnits(f.unitsPreference || undefined);
+
+  // The profile patch for a given step (only that step's fields). Height/weight are
+  // in display units and converted to canonical cm/kg here (PRD §6.6).
   function patchForStep(s: Step): Partial<Omit<Profile, "id">> {
     switch (s) {
-      case "basic":
-        return { name: f.name || undefined, age: num(f.age), heightCm: num(f.heightCm), weightKg: num(f.weightKg) };
+      case "units":
+        return { unitsPreference: (f.unitsPreference || undefined) as Profile["unitsPreference"] };
+      case "basic": {
+        const heightCm = heightToCanonicalCm(
+          units,
+          units === "imperial"
+            ? { feet: num(f.heightFt), inches: num(f.heightIn) }
+            : { cm: num(f.heightCm) },
+        );
+        const weightKg = f.weight ? toCanonicalWeightKg(Number(f.weight), units) : undefined;
+        return { name: f.name || undefined, age: num(f.age), heightCm, weightKg };
+      }
       case "goals":
         return {
           primaryGoal: f.primaryGoal || undefined,
@@ -167,7 +200,8 @@ export default function OnboardingFlow({
           const d = baselines[l.id];
           return {
             exerciseId: l.id,
-            weight: d?.weight ? Number(d.weight) : undefined,
+            // baseline weight is entered in display units → store canonical kg.
+            weight: d?.weight ? toCanonicalWeightKg(Number(d.weight), units) : undefined,
             reps: d?.reps ? Number(d.reps) : undefined,
             approxDate: d?.approxDate ?? "few_weeks_ago",
             source: "onboarding",
@@ -219,15 +253,55 @@ export default function OnboardingFlow({
           </div>
         )}
 
+        {/* UNITS — first data step, no default (PRD §6.6) */}
+        {step === "units" && (
+          <StepShell
+            title="Pounds or kilograms?"
+            lead="Choose how you'd like to enter and see weights and height. You can change this anytime — it only affects display, never your saved numbers."
+            onBack={back}
+            onNext={next}
+            pending={pending}
+            nextDisabled={!f.unitsPreference}
+          >
+            <div className="chip-grid">
+              {([
+                { key: "imperial", label: "Imperial", sub: "lb · ft / in" },
+                { key: "metric", label: "Metric", sub: "kg · cm" },
+              ] as const).map((o) => (
+                <button
+                  key={o.key}
+                  type="button"
+                  className={`chip${f.unitsPreference === o.key ? " selected" : ""}`}
+                  style={{ width: "calc(50% - 5px)" }}
+                  onClick={() => set({ unitsPreference: o.key })}
+                >
+                  <div className="thumb">{f.unitsPreference === o.key ? "✓" : o.label.charAt(0)}</div>
+                  <div className="txt">
+                    <div className="n">{o.label}</div>
+                    <div className="e">{o.sub}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </StepShell>
+        )}
+
         {/* BASIC INFO */}
         {step === "basic" && (
           <StepShell title="About you" lead="The basics we use to scale loads and volume." onBack={back} onNext={next} pending={pending}>
             <Text label="Name" value={f.name} onChange={(v) => set({ name: v })} placeholder="First name" />
             <Row>
               <NumField label="Age" value={f.age} onChange={(v) => set({ age: v })} />
-              <NumField label="Height (cm)" value={f.heightCm} onChange={(v) => set({ heightCm: v })} />
+              {units === "imperial" ? (
+                <>
+                  <NumField label="Height (ft)" value={f.heightFt} onChange={(v) => set({ heightFt: v })} />
+                  <NumField label="(in)" value={f.heightIn} onChange={(v) => set({ heightIn: v })} />
+                </>
+              ) : (
+                <NumField label="Height (cm)" value={f.heightCm} onChange={(v) => set({ heightCm: v })} />
+              )}
             </Row>
-            <NumField label="Bodyweight (kg)" value={f.weightKg} onChange={(v) => set({ weightKg: v })} />
+            <NumField label={`Bodyweight (${weightUnit(units)})`} value={f.weight} onChange={(v) => set({ weight: v })} />
           </StepShell>
         )}
 
@@ -323,8 +397,8 @@ export default function OnboardingFlow({
                   <div className="ob-row-name">{l.name}</div>
                   <div className="ob-row-fields">
                     <div className="log-field">
-                      <input type="number" inputMode="decimal" placeholder="lb" aria-label={`${l.name} weight`} value={d.weight} onChange={(e) => upd({ weight: e.target.value })} />
-                      <span>lb</span>
+                      <input type="number" inputMode="decimal" placeholder={weightUnit(units)} aria-label={`${l.name} weight`} value={d.weight} onChange={(e) => upd({ weight: e.target.value })} />
+                      <span>{weightUnit(units)}</span>
                     </div>
                     <div className="log-times">×</div>
                     <div className="log-field">

@@ -14,19 +14,37 @@ import type {
   CreatineStatus,
   EquipmentAccess,
   Profile,
+  UnitsPreference,
 } from "@/lib/domain/types";
+import { resolveUnits, toCanonicalWeightKg } from "@/lib/domain/units";
+
+// Change the units preference. Display/input only — never re-scales stored values
+// (weights stay canonical kg), so history reads the same numbers (PRD §6.6).
+export async function setUnitsAction(formData: FormData) {
+  const u = String(formData.get("unitsPreference") ?? "");
+  if (u !== "imperial" && u !== "metric") return;
+  const repo = getRepo();
+  await repo.updateProfile(getUserId(), { unitsPreference: u as UnitsPreference });
+  revalidatePath("/profile");
+  revalidatePath("/today");
+  revalidatePath("/history");
+}
 
 // Inline profile edits from the Profile tab — weight, primary goal, creatine
 // status (PRD §6.1), plus session length + equipment. Writes straight to profiles
-// without touching onboarding (PRD §6.6). Only sets fields actually present.
+// without touching onboarding (PRD §6.6). Only sets fields actually present. The
+// weight input is in the user's DISPLAY unit; converted to canonical kg here.
 export async function updateProfileAction(formData: FormData) {
   const repo = getRepo();
   const userId = getUserId();
   const patch: Partial<Omit<Profile, "id">> = {};
 
-  if (formData.has("weightKg")) {
-    const w = Number(formData.get("weightKg"));
-    if (Number.isFinite(w) && w > 0) patch.weightKg = w;
+  if (formData.has("weight")) {
+    const w = Number(formData.get("weight"));
+    if (Number.isFinite(w) && w > 0) {
+      const profile = await repo.getProfile(userId);
+      patch.weightKg = toCanonicalWeightKg(w, resolveUnits(profile.unitsPreference));
+    }
   }
   if (formData.has("primaryGoal")) {
     const g = String(formData.get("primaryGoal") ?? "").trim();

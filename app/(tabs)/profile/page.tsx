@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { getRepo, getUserId, todayISO } from "@/lib/db";
 import ThemeToggle from "./ThemeToggle";
+import { displayWeightNumber, resolveUnits, weightUnit } from "@/lib/domain/units";
 import {
   addExclusionAction,
   addOverrideAction,
   removeExclusionAction,
   removeOverrideAction,
+  setUnitsAction,
   signOutAction,
   updateProfileAction,
 } from "./actions";
@@ -46,6 +48,10 @@ export default async function ProfilePage() {
     .map((id) => nameById.get(id))
     .filter(Boolean) as string[];
 
+  const units = resolveUnits(profile.unitsPreference);
+  const weightDisplay =
+    profile.weightKg != null ? displayWeightNumber(profile.weightKg, units) : "";
+
   return (
     <>
       <div className="topbar">
@@ -84,18 +90,31 @@ export default async function ProfilePage() {
       <div className="section-label">Appearance</div>
       <ThemeToggle />
 
+      {/* Units — display/input only; never re-scales stored values (PRD §6.6). */}
+      <div className="section-label">Units</div>
+      <form action={setUnitsAction} className="field">
+        <label htmlFor="unitsPreference">Show weights &amp; height in</label>
+        <select id="unitsPreference" name="unitsPreference" defaultValue={units}>
+          <option value="imperial">Imperial (lb · ft/in)</option>
+          <option value="metric">Metric (kg · cm)</option>
+        </select>
+        <button className="btn-ghost" type="submit" style={{ width: "100%", marginTop: 10 }}>
+          Save units
+        </button>
+      </form>
+
       {/* Quick edits — weight, goal, creatine (PRD §6.1): no onboarding needed. */}
       <div className="section-label">Quick edits</div>
       <form action={updateProfileAction}>
         <div className="field">
-          <label htmlFor="weightKg">Bodyweight (kg)</label>
+          <label htmlFor="weight">Bodyweight ({weightUnit(units)})</label>
           <input
-            id="weightKg"
-            name="weightKg"
+            id="weight"
+            name="weight"
             type="number"
             step="0.1"
             inputMode="decimal"
-            defaultValue={profile.weightKg ?? ""}
+            defaultValue={weightDisplay}
           />
         </div>
         <div className="field">

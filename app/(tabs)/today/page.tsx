@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getRepo, getUserId, todayISO } from "@/lib/db";
 import { allowedEquipment } from "@/lib/ai/context";
 import { needsOnboarding } from "@/lib/onboarding";
+import { resolveUnits } from "@/lib/domain/units";
 import { generateTodayAction } from "./actions";
 import TodayClient, { type SwapExercise } from "./TodayClient";
 
@@ -24,7 +25,11 @@ export default async function TodayPage() {
   if (await needsOnboarding(repo, userId)) redirect("/onboarding");
 
   const date = todayISO();
-  const session = await repo.getSessionForDate(userId, date);
+  const [session, profile] = await Promise.all([
+    repo.getSessionForDate(userId, date),
+    repo.getProfile(userId),
+  ]);
+  const units = resolveUnits(profile.unitsPreference);
 
   // Sets already logged for this session, so logging survives reloads (PRD §6.3).
   const loggedByExercise: Record<string, { weight: number; reps: number }[]> = {};
@@ -44,11 +49,10 @@ export default async function TodayPage() {
   const STRENGTH = new Set(["primary", "secondary", "accessory"]);
   let swapLibrary: SwapExercise[] = [];
   if (session) {
-    const [exercises, exclusions, activeOverride, profile] = await Promise.all([
+    const [exercises, exclusions, activeOverride] = await Promise.all([
       repo.listExercises(),
       repo.listExclusions(userId),
       repo.getActiveOverride(userId, date),
-      repo.getProfile(userId),
     ]);
     const excludedIds = new Set(
       exclusions.map((e) => e.exerciseId).filter(Boolean) as string[],
@@ -102,6 +106,7 @@ export default async function TodayPage() {
       dateLabel={prettyDate(date)}
       initialLogs={loggedByExercise}
       library={swapLibrary}
+      units={units}
     />
   );
 }

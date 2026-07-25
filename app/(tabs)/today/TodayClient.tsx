@@ -15,6 +15,13 @@ import {
   fmtShortDate,
 } from "@/lib/domain/format";
 import {
+  displayWeightNumber,
+  formatWeight,
+  toCanonicalWeightKg,
+  weightUnit,
+  type UnitsPreference,
+} from "@/lib/domain/units";
+import {
   excludeAndRegenerateAction,
   excludeOriginalAction,
   generateTodayAction,
@@ -49,13 +56,17 @@ export default function TodayClient({
   dateLabel,
   initialLogs,
   library,
+  units,
 }: {
   session: Session;
   dateLabel: string;
+  // Weights are canonical kg; the UI converts to `units` for display + input.
   initialLogs: Record<string, LoggedSet[]>;
   library: SwapExercise[];
+  units: UnitsPreference;
 }) {
   const { program } = session;
+  const wLabel = weightUnit(units);
   const [excludeFor, setExcludeFor] = useState<string | null>(null);
   const [logs, setLogs] = useState<Record<string, LoggedSet[]>>(initialLogs);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -108,12 +119,14 @@ export default function TodayClient({
     setTimeout(() => setToast(null), 2400);
   }
 
-  // Prefill for a lift's next set: last set logged, else the prescription.
+  // Prefill for a lift's next set (in DISPLAY units): last set logged, else the
+  // prescription — all sourced from canonical kg and converted for the input.
   function defaultDraft(lift: ProgramLift): Draft {
     const done = logs[lift.exerciseId]?.length ?? 0;
     const prev = logs[lift.exerciseId]?.[done - 1];
+    const baseKg = prev?.weight ?? lift.weightTarget ?? lift.lastTime?.weight ?? null;
     return {
-      weight: String(prev?.weight ?? lift.weightTarget ?? lift.lastTime?.weight ?? ""),
+      weight: baseKg != null ? String(displayWeightNumber(baseKg, units)) : "",
       reps: String(prev?.reps ?? lift.repHigh),
     };
   }
@@ -129,15 +142,17 @@ export default function TodayClient({
     }));
   }
 
-  // Log the set the user just completed — straight to history (PRD §6.3).
+  // Log the set the user just completed — straight to history (PRD §6.3). The
+  // draft is in DISPLAY units; convert to canonical kg for storage.
   function logSet(lift: ProgramLift) {
     const d = draftFor(lift);
-    const w = Number(d.weight) || 0;
+    const dispW = Number(d.weight) || 0;
     const r = Number(d.reps) || 0;
     if (r <= 0) {
       showToast("Enter the reps you completed");
       return;
     }
+    const weightKg = toCanonicalWeightKg(dispW, units);
     const setIndex = logs[lift.exerciseId]?.length ?? 0;
     setSavingId(lift.exerciseId);
 
@@ -147,21 +162,22 @@ export default function TodayClient({
         exerciseId: lift.exerciseId,
         exerciseName: lift.exerciseName,
         setIndex,
-        weight: w,
+        weight: weightKg,
         reps: r,
       });
       setLogs((prev) => ({
         ...prev,
-        [lift.exerciseId]: [...(prev[lift.exerciseId] ?? []), { weight: w, reps: r }],
+        [lift.exerciseId]: [...(prev[lift.exerciseId] ?? []), { weight: weightKg, reps: r }],
       }));
-      // Keep the weight for the next set; leave reps as-is for a quick repeat.
+      // Keep the entered (display) weight for the next set; reps for a quick repeat.
       setDrafts((prev) => ({
         ...prev,
-        [lift.exerciseId]: { weight: String(w), reps: String(r) },
+        [lift.exerciseId]: { weight: String(dispW), reps: String(r) },
       }));
       setSavingId(null);
       const doneNow = setIndex + 1;
-      if (res.isNewPR) showToast(`New PR — ${res.prWeight} lb (${res.bucket})`);
+      if (res.isNewPR)
+        showToast(`New PR — ${formatWeight(res.prWeight, units)} (${res.bucket})`);
       else if (doneNow >= lift.sets) showToast(`${lift.exerciseName} complete`);
       else showToast("Set logged");
     });
@@ -277,13 +293,13 @@ export default function TodayClient({
                     {lift.equipment === "bodyweight"
                       ? "BW"
                       : lift.weightTarget !== null
-                        ? lift.weightTarget
+                        ? displayWeightNumber(lift.weightTarget, units)
                         : "—"}
                   </div>
                   <div className="lbl">
                     {lift.equipment === "bodyweight" || lift.weightTarget === null
                       ? "target"
-                      : "lb target"}
+                      : `${wLabel} target`}
                   </div>
                 </div>
                 <div>
@@ -297,14 +313,14 @@ export default function TodayClient({
               <div className="ref-row">
                 <div className="ref-chip">
                   <div className="k">Last time</div>
-                  <div className="v">{fmtLastTime(lift.lastTime)}</div>
+                  <div className="v">{fmtLastTime(lift.lastTime, units)}</div>
                 </div>
                 <div className="ref-chip">
                   <div className="k">
                     {lift.pr ? `PR · ${lift.pr.repBucket} reps` : "PR"}
                   </div>
                   <div className="v">
-                    {fmtPR(lift.pr)}{" "}
+                    {fmtPR(lift.pr, units)}{" "}
                     {lift.pr && <span>{fmtShortDate(lift.pr.date)}</span>}
                   </div>
                 </div>
@@ -335,7 +351,7 @@ export default function TodayClient({
                       key={i}
                       style={{ background: "var(--rationale-bg)", color: "var(--rationale-ink)" }}
                     >
-                      {s.weight ? `${s.weight}×${s.reps}` : `BW×${s.reps}`}
+                      {s.weight ? `${displayWeightNumber(s.weight, units)}×${s.reps}` : `BW×${s.reps}`}
                     </span>
                   ))}
                 </div>
@@ -352,12 +368,12 @@ export default function TodayClient({
                       <input
                         type="number"
                         inputMode="decimal"
-                        placeholder="lb"
+                        placeholder={wLabel}
                         aria-label={`${lift.exerciseName} weight`}
                         value={d.weight}
                         onChange={(e) => setDraft(lift, { weight: e.target.value })}
                       />
-                      <span>lb</span>
+                      <span>{wLabel}</span>
                     </div>
                     <div className="log-times">×</div>
                     <div className="log-field">
@@ -450,7 +466,7 @@ export default function TodayClient({
                   <div className="session-log-row" key={i}>
                     <span className="sl-set">Set {i + 1}</span>
                     <span className="sl-val">
-                      {s.weight ? `${s.weight} lb` : "BW"} × {s.reps} reps
+                      {s.weight ? formatWeight(s.weight, units) : "BW"} × {s.reps} reps
                     </span>
                   </div>
                 ))}

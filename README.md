@@ -87,11 +87,11 @@ used, so the app runs with zero Supabase setup — the mock branch is gated on
 `getUser` / `getSession` / `signOut`; `lib/supabase/{client,server,middleware}.ts`
 hold the SSR clients.
 
-**Onboarding.** A fresh user is routed through an 11-step flow (`app/onboarding`):
-welcome → basic info → goals/experience → training logistics → lift selection →
-baselines → health & safety (with privacy copy) → cycle-tracking opt-in (off by
-default; cycle length only requested/stored if opted in) → recovery & lifestyle →
-extras → confirmation. **Every data step saves incrementally** to `profiles` (so a
+**Onboarding.** A fresh user is routed through a 12-step flow (`app/onboarding`):
+welcome → **units (imperial/metric, no default)** → basic info → goals/experience →
+training logistics → lift selection → baselines → health & safety (with privacy
+copy) → cycle-tracking opt-in (off by default; cycle length only requested/stored
+if opted in) → recovery & lifestyle → extras → confirmation. **Every data step saves incrementally** to `profiles` (so a
 closed tab doesn't lose progress). Selected lifts become `profile.userActiveLifts`
 (the generator + swap picker only surface these strength lifts; core/mobility is
 programmed for them). Baselines are stored as backdated `source: "onboarding"`
@@ -99,12 +99,23 @@ logged sets, driving the same progression as live logs (squat 3×8 @ 130 lb → 
 prescription). The full profile (equipment, injuries, recovery, cycle) feeds the AI
 context (`lib/ai/context.ts` + the Claude prompt). Re-runnable from Profile.
 
+## Units (imperial / metric)
+
+Chosen explicitly as the first onboarding step — **no default** (`profile.units_preference`,
+migration `0003_units_preference.sql`). **Storage is always canonical metric**: kg for
+weight (profile, logged sets, PRs, program targets) and cm for height. `lib/domain/units.ts`
+converts at the input/display edges only, so changing the preference later (from Profile)
+re-labels everything **without re-scaling stored values** — a set logged at 130 lb (stored
+58.97 kg) shows 130 lb for imperial or ~59 kg for metric. Load-increment logic is
+unit-aware (`nextTargetKg`): a clean +5 lb step for imperial, +2.5 kg for metric — the
+mock generator and the Claude prompt both work in the user's unit and store canonical kg.
+
 ### Going live on Supabase (handoff)
 
 The local store is the default and fully exercised; the Supabase path is coded but
 needs your project to apply + verify:
-1. Apply `supabase/migrations/0001_init.sql` then `0002_profiles_and_onboarding.sql`
-   in the Supabase SQL editor.
+1. Apply `supabase/migrations/0001_init.sql`, `0002_profiles_and_onboarding.sql`,
+   then `0003_units_preference.sql` in the Supabase SQL editor.
 2. `npm run seed:supabase` to seed the exercise catalog.
 3. Set `DATA_BACKEND=supabase` in `.env.local`.
 4. Verify RLS with Supabase's `get_advisors` (security) — the policies scope every

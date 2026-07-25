@@ -5,6 +5,11 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { repRangeFor, restDefaultsFor } from "../domain/heuristics";
+import {
+  displayWeightNumber,
+  resolveUnits,
+  toCanonicalWeightKg,
+} from "../domain/units";
 import { eligibleExercises } from "./context";
 import type {
   GenerationContext,
@@ -34,7 +39,8 @@ const inputSchema = {
           repHigh: { type: "integer", minimum: 1, maximum: 30 },
           weightTarget: {
             type: ["number", "null"],
-            description: "Target load in lb, or null for bodyweight/hold work.",
+            description:
+              "Target load in the unit stated in the prompt, or null for bodyweight/hold work.",
           },
           rationale: {
             type: "string",
@@ -53,6 +59,10 @@ const inputSchema = {
 
 function buildPrompt(ctx: GenerationContext): string {
   const eligible = eligibleExercises(ctx);
+  const units = resolveUnits(ctx.profile.unitsPreference);
+  // History is stored canonical kg; present it to the model in the user's unit so
+  // its increments + rationale come back in that unit (PRD §6.6).
+  const w = (kg: number) => displayWeightNumber(kg, units);
   const library = eligible.map((ex) => {
     const h = ctx.history[ex.id];
     return {
@@ -63,10 +73,12 @@ function buildPrompt(ctx: GenerationContext): string {
       equipment: ex.equipment,
       isCoreLift: !!ex.isCoreLift,
       correctiveGoal: ex.correctiveGoal ?? null,
-      lastTime: h?.lastTime ?? null,
+      lastTime: h?.lastTime
+        ? { weight: w(h.lastTime.weight), reps: h.lastTime.reps, sets: h.lastTime.sets, date: h.lastTime.date }
+        : null,
       currentPRs: h?.currentPRs.map((p) => ({
         bucket: p.repBucket,
-        weight: p.weight,
+        weight: w(p.weight),
         reps: p.reps,
       })),
     };
@@ -78,9 +90,13 @@ function buildPrompt(ctx: GenerationContext): string {
   const p = ctx.profile;
   const sessionMin = p.sessionDurationMinutes ?? 60;
 
+  const unitLabel = units === "imperial" ? "lb" : "kg";
+  const stepHint = units === "imperial" ? "~2.5–5 lb" : "~1–2.5 kg";
+
   return [
     `You are programming ONE strength session for a lifter.`,
     `Date: ${ctx.date}. Training phase: ${ctx.phase} (default rep range ${range.low}-${range.high}).`,
+    `ALL weights in this prompt and in your response are in ${unitLabel}. Use ${unitLabel} everywhere, including weightTarget and any weights in the rationale. Progress loads by a clean ${stepHint} step when a lift has history.`,
     `Session must fit ${sessionMin} minutes END TO END including a ~8 min warm-up.`,
     ctx.activeOverride
       ? `TEMPORARY context override in effect (do not treat as permanent): "${ctx.activeOverride.context}". Only use exercises whose equipment is available in this context.`
@@ -150,10 +166,19 @@ export class AnthropicGenerator implements ProgramGenerator {
       lifts: LiftSelection[];
     };
 
+    // The model worked in the user's unit; convert weightTarget back to canonical
+    // kg for storage. Rationale text stays in the user's unit for display.
+    const units = resolveUnits(ctx.profile.unitsPreference);
+    const selections = input.lifts.map((l) => ({
+      ...l,
+      weightTarget:
+        l.weightTarget == null ? null : toCanonicalWeightKg(l.weightTarget, units),
+    }));
+
     return {
       phase: input.phase,
       contextNote: input.contextNote,
-      selections: input.lifts,
+      selections,
     };
   }
 }

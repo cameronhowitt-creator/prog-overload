@@ -51,10 +51,15 @@ export type StressLevel = "low" | "moderate" | "high";
 export type ActivityOutsideGym = "sedentary" | "active_job" | "other_sport";
 export type CreatineStatus = "yes" | "no" | "considering";
 
+// Whether the user enters/sees imperial (lb, ft-in) or metric (kg, cm). No default —
+// chosen as the first onboarding step. Storage is always canonical metric (PRD §6.6).
+export type UnitsPreference = "imperial" | "metric";
+
 // Full user profile captured across onboarding (PRD §6.6). `id` is the auth user id.
 // Most fields are optional because onboarding saves incrementally, step by step.
 export interface Profile {
   id: string;
+  unitsPreference?: UnitsPreference; // display/input only; storage stays metric
   name?: string;
   age?: number;
   heightCm?: number;

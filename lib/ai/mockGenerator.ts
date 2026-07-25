@@ -5,6 +5,7 @@
 
 import type { Exercise } from "../domain/types";
 import { DEFAULT_SESSION_MINUTES, repRangeFor } from "../domain/heuristics";
+import { formatWeight, nextTargetKg, resolveUnits } from "../domain/units";
 import { eligibleExercises } from "./context";
 import type {
   GenerationContext,
@@ -134,11 +135,13 @@ function prescribe(
   }
 
   if (last) {
-    const increment = 5; // directional; the log becomes authoritative going forward
-    const target = last.weight + increment;
+    // last.weight is canonical kg; progress by a clean step in the user's unit
+    // (+5 lb / +2.5 kg) and render the rationale in that unit (PRD §6.6).
+    const units = resolveUnits(ctx.profile.unitsPreference);
+    const targetKg = nextTargetKg(last.weight, units);
     return {
-      weightTarget: target,
-      rationale: `Last time: ${last.sets}×${last.reps} @ ${last.weight} lb. Small step up to ${target} lb today.`,
+      weightTarget: targetKg,
+      rationale: `Last time: ${last.sets}×${last.reps} @ ${formatWeight(last.weight, units)}. Small step up to ${formatWeight(targetKg, units)} today.`,
     };
   }
 

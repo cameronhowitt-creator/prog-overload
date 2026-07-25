@@ -112,6 +112,7 @@ export class SupabaseStore implements Repository {
   private rowToProfile(r: any, activeLifts: string[]): Profile {
     return {
       id: r.user_id,
+      unitsPreference: r.units_preference ?? undefined,
       name: r.name ?? undefined,
       age: r.age ?? undefined,
       heightCm: r.height_cm != null ? Number(r.height_cm) : undefined,
@@ -188,6 +189,7 @@ export class SupabaseStore implements Repository {
 
     const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
     const map: [keyof Omit<Profile, "id">, string][] = [
+      ["unitsPreference", "units_preference"],
       ["name", "name"],
       ["age", "age"],
       ["heightCm", "height_cm"],

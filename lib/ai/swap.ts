@@ -8,6 +8,12 @@ import {
   repBucketFor,
   restDefaultsFor,
 } from "../domain/heuristics";
+import {
+  formatWeight,
+  nextTargetKg,
+  resolveUnits,
+  type UnitsPreference,
+} from "../domain/units";
 
 export interface SwapTemplate {
   sets: number;
@@ -22,7 +28,9 @@ export async function buildSwapLift(
   userId: string,
   exercise: Exercise,
   template: SwapTemplate,
+  unitsPref?: UnitsPreference,
 ): Promise<ProgramLift> {
+  const units = resolveUnits(unitsPref);
   const [lastTime, currentPRs] = await Promise.all([
     repo.lastTimeFor(userId, exercise.id),
     repo.listPRs(userId, { onlyCurrent: true }),
@@ -49,8 +57,9 @@ export async function buildSwapLift(
   if (!isLoadable) {
     rationale = `Swapped in — bodyweight, ${template.repLow}–${template.repHigh} clean reps.`;
   } else if (lastTime) {
-    weightTarget = lastTime.weight + 5;
-    rationale = `Swapped in. Last time: ${lastTime.sets}×${lastTime.reps} @ ${lastTime.weight} lb — step up to ${weightTarget} lb.`;
+    // last-time is canonical kg; step up by a clean unit-appropriate increment.
+    weightTarget = nextTargetKg(lastTime.weight, units);
+    rationale = `Swapped in. Last time: ${lastTime.sets}×${lastTime.reps} @ ${formatWeight(lastTime.weight, units)} — step up to ${formatWeight(weightTarget, units)}.`;
   } else {
     rationale = `Swapped in — no history yet, pick a controlled working weight. The app tracks it from here.`;
   }
