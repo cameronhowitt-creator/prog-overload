@@ -1,0 +1,157 @@
+/* ───────────────────────────────────────────────────────────────────────────
+   Locked design tokens — Apple-derived system (DESIGN-apple.md §9).
+   Single accent blue only; no shadows on chrome; 44px touch targets;
+   pill / lg / sm radii grammar only; scale(0.95) press state.
+   Dark-mode + validation tokens added per §9 "Gaps to resolve".
+   ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  --primary: #0066cc;
+  --primary-focus: #0071e3;
+  --primary-on-dark: #2997ff;
+
+  --ink: #1d1d1f;
+  --ink-muted-80: #333333;
+  --ink-muted-48: #7a7a7a;
+
+  --divider-soft: #f0f0f0;
+  --hairline: #e0e0e0;
+
+  --canvas: #ffffff;
+  --canvas-parchment: #f5f5f7;
+  --surface-pearl: #fafafc;
+  --on-dark: #ffffff;
+  --body-muted: #cccccc;
+
+  /* Validation states (not in source system — added per §9 gap). */
+  --danger: #b3261e;
+  --danger-bg: #fdeceb;
+  --success: #1c7d4d;
+
+  /* Rationale callout (from mockup). */
+  --rationale-bg: #eef5ff;
+  --rationale-ink: #0b4f8f;
+
+  /* PR badge (from mockup). */
+  --pr-bg: #fff4e0;
+  --pr-ink: #8a5a00;
+
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 18px;
+  --radius-pill: 9999px;
+
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 17px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Helvetica Neue", system-ui, sans-serif;
+
+  color-scheme: light;
+}
+
+/* Dark mode — desirable for gym lighting (§9 gap). Follows system, overridable
+   by an explicit [data-theme] on the root (set by the theme toggle). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --primary: #2997ff; /* Sky Link Blue reads as the action color on dark */
+    --primary-focus: #2997ff;
+
+    --ink: #f5f5f7;
+    --ink-muted-80: #d2d2d7;
+    --ink-muted-48: #98989d;
+
+    --divider-soft: #2a2a2c;
+    --hairline: #38383a;
+
+    --canvas: #1c1c1e;
+    --canvas-parchment: #2a2a2c;
+    --surface-pearl: #242426;
+    --on-dark: #ffffff;
+
+    --danger: #ff6961;
+    --danger-bg: #3a201f;
+    --rationale-bg: #16324d;
+    --rationale-ink: #9ecbff;
+    --pr-bg: #3a2f14;
+    --pr-ink: #e8c47a;
+
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --primary: #2997ff;
+  --primary-focus: #2997ff;
+  --ink: #f5f5f7;
+  --ink-muted-80: #d2d2d7;
+  --ink-muted-48: #98989d;
+  --divider-soft: #2a2a2c;
+  --hairline: #38383a;
+  --canvas: #1c1c1e;
+  --canvas-parchment: #2a2a2c;
+  --surface-pearl: #242426;
+  --on-dark: #ffffff;
+  --danger: #ff6961;
+  --danger-bg: #3a201f;
+  --rationale-bg: #16324d;
+  --rationale-ink: #9ecbff;
+  --pr-bg: #3a2f14;
+  --pr-ink: #e8c47a;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  /* Body copy at 17px/1.47/-0.374px — Apple's reading pace (§9). */
+  font-size: 17px;
+  line-height: 1.47;
+  letter-spacing: -0.374px;
+  color: var(--ink);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Universal press micro-interaction (§9): scale(0.95) on every tappable element. */
+button,
+.tappable {
+  transition: transform 0.08s ease;
+}
+button:active,
+.tappable:active {
+  transform: scale(0.95);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+input,
+select {
+  font-family: inherit;
+}
+
+/* Focus ring — 2px primary-focus (§9). */
+:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}

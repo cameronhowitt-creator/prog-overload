@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Progressive Overload — App Mockup</title>
+<style>
+  :root{
+    --primary:#0066cc;
+    --primary-focus:#0071e3;
+    --primary-on-dark:#2997ff;
+    --ink:#1d1d1f;
+    --ink-muted-80:#333333;
+    --ink-muted-48:#7a7a7a;
+    --divider-soft:#f0f0f0;
+    --hairline:#e0e0e0;
+    --canvas:#ffffff;
+    --canvas-parchment:#f5f5f7;
+    --surface-pearl:#fafafc;
+    --tile-1:#272729;
+    --on-dark:#ffffff;
+    --body-muted:#cccccc;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:#dcdce0;
+    font-family:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    display:flex;
+    justify-content:center;
+    padding:32px 12px;
+  }
+  .device{
+    width:390px;
+    background:var(--canvas);
+    border-radius:40px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.25);
+    overflow:hidden;
+    position:relative;
+    border:8px solid #111;
+  }
+  .statusbar{
+    height:44px;
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    padding:0 22px 6px;
+    font-size:14px;
+    font-weight:600;
+    color:var(--ink);
+    background:var(--canvas);
+  }
+  .screen{ display:none; min-height:700px; max-height:700px; overflow-y:auto; background:var(--canvas); -ms-overflow-style:none; scrollbar-width:none; }
+  .screen::-webkit-scrollbar{ display:none; }
+  .screen.active{ display:block; }
+
+  .topbar{
+    padding:6px 20px 14px;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    border-bottom:1px solid var(--divider-soft);
+  }
+  .topbar .eyebrow{
+    font-size:12px; font-weight:400; letter-spacing:-0.12px; color:var(--ink-muted-48);
+  }
+  .topbar h1{
+    margin:0; font-size:28px; font-weight:600; letter-spacing:0.196px; line-height:1.14; color:var(--ink);
+  }
+  .topbar .meta{
+    display:flex; gap:14px; margin-top:8px; font-size:13px; color:var(--ink-muted-48);
+  }
+  .topbar .meta b{ color:var(--ink); font-weight:600; }
+
+  .section-label{
+    font-size:12px; font-weight:600; letter-spacing:-0.224px; color:var(--ink-muted-48);
+    text-transform:uppercase; padding:18px 20px 8px;
+  }
+
+  .lift-card{
+    margin:0 20px 14px;
+    background:var(--canvas);
+    border:1px solid var(--hairline);
+    border-radius:18px;
+    padding:16px;
+  }
+  .lift-card.primary{ border-color:var(--primary); border-width:1.5px; }
+  .lift-row-top{
+    display:flex; justify-content:space-between; align-items:flex-start; gap:8px;
+  }
+  .lift-name{ font-size:17px; font-weight:600; letter-spacing:-0.374px; color:var(--ink); margin:0; }
+  .lift-tag{
+    font-size:12px; font-weight:400; letter-spacing:-0.12px; color:var(--ink-muted-48); margin-top:2px;
+  }
+  .swap-btn{
+    border:1px solid var(--hairline); background:var(--surface-pearl); color:var(--ink-muted-80);
+    font-size:12px; font-weight:400; letter-spacing:-0.224px; border-radius:999px; padding:6px 12px;
+    display:flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer;
+  }
+  .prescription{
+    display:flex; gap:18px; margin-top:12px;
+  }
+  .prescription .num{ font-size:20px; font-weight:600; color:var(--ink); letter-spacing:-0.2px; }
+  .prescription .lbl{ font-size:11px; color:var(--ink-muted-48); margin-top:1px; }
+
+  .ref-row{
+    display:flex; gap:10px; margin-top:12px;
+  }
+  .ref-chip{
+    flex:1; background:var(--canvas-parchment); border-radius:11px; padding:8px 10px;
+  }
+  .ref-chip .k{ font-size:10px; font-weight:600; letter-spacing:-0.08px; color:var(--ink-muted-48); text-transform:uppercase; }
+  .ref-chip .v{ font-size:14px; font-weight:600; color:var(--ink); margin-top:2px; }
+  .ref-chip .v span{ font-weight:400; color:var(--ink-muted-48); font-size:12px; }
+
+  .rationale{
+    margin-top:12px; padding:10px 12px; background:#eef5ff; border-radius:11px;
+    font-size:13px; line-height:1.4; color:#0b4f8f;
+  }
+  .rationale b{ color:var(--primary-focus); }
+
+  .cues{ margin-top:12px; }
+  .cues .clbl{ font-size:11px; font-weight:600; letter-spacing:-0.08px; color:var(--ink-muted-48); text-transform:uppercase; margin-bottom:6px; }
+  .cue-pill{
+    display:inline-flex; align-items:center; font-size:12px; color:var(--ink-muted-80);
+    background:var(--divider-soft); border-radius:999px; padding:5px 10px; margin:0 6px 6px 0;
+  }
+  .cue-pill svg{ margin-right:4px; flex-shrink:0; }
+
+  .select-btn{
+    width:100%; margin-top:14px; background:var(--ink); color:var(--on-dark);
+    border:none; border-radius:8px; padding:10px; font-size:14px; font-weight:600;
+    letter-spacing:-0.224px; cursor:pointer;
+  }
+  .lift-card.primary .select-btn{ background:var(--primary); }
+
+  .sticky-log{
+    position:sticky; bottom:0; left:0; right:0;
+    background:rgba(245,245,247,0.85);
+    backdrop-filter:blur(20px) saturate(180%);
+    -webkit-backdrop-filter:blur(20px) saturate(180%);
+    border-top:1px solid var(--hairline);
+    padding:10px 16px; display:flex; align-items:center; gap:10px;
+  }
+  .sticky-log .cur{ flex:1; min-width:0; }
+  .sticky-log .cur .name{ font-size:13px; font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sticky-log .cur .sub{ font-size:11px; color:var(--ink-muted-48); }
+  .sticky-log input{
+    width:52px; text-align:center; border:1px solid var(--hairline); border-radius:8px;
+    padding:8px 4px; font-size:14px; font-weight:600; color:var(--ink); background:var(--canvas);
+  }
+  .sticky-log .logbtn{
+    background:var(--primary); color:#fff; border:none; border-radius:999px;
+    padding:10px 18px; font-size:14px; font-weight:600; white-space:nowrap; cursor:pointer;
+  }
+
+  .tabbar{
+    display:flex; border-top:1px solid var(--hairline); background:rgba(255,255,255,0.94);
+    backdrop-filter:blur(20px);
+  }
+  .tabbar button{
+    flex:1; border:none; background:none; padding:10px 4px 20px; display:flex;
+    flex-direction:column; align-items:center; gap:3px; cursor:pointer; color:var(--ink-muted-48);
+  }
+  .tabbar button.active{ color:var(--primary); }
+  .tabbar span{ font-size:10px; font-weight:600; letter-spacing:-0.08px; }
+
+  /* History screen */
+  .hist-card{
+    margin:0 20px 12px; background:var(--canvas); border:1px solid var(--hairline);
+    border-radius:18px; padding:16px;
+  }
+  .hist-top{ display:flex; justify-content:space-between; align-items:center; }
+  .hist-top .name{ font-size:17px; font-weight:600; color:var(--ink); }
+  .pr-badge{
+    background:#fff4e0; color:#8a5a00; font-size:11px; font-weight:600; border-radius:999px;
+    padding:4px 10px; display:flex; align-items:center; gap:4px;
+  }
+  .sparkline{ margin:12px 0 8px; }
+  .hist-foot{ display:flex; justify-content:space-between; font-size:11px; color:var(--ink-muted-48); }
+  .hist-foot b{ color:var(--ink); font-weight:600; }
+
+  /* Library / swap sheet */
+  .sheet-scrim{
+    position:absolute; inset:0; background:rgba(0,0,0,0.4); display:none; align-items:flex-end; z-index:5;
+  }
+  .sheet-scrim.open{ display:flex; }
+  .sheet{
+    width:100%; background:var(--canvas); border-radius:22px 22px 0 0; padding:16px 20px 24px;
+    max-height:78%; overflow-y:auto;
+  }
+  .sheet-handle{ width:36px; height:5px; background:var(--hairline); border-radius:999px; margin:0 auto 14px; }
+  .sheet h2{ font-size:20px; font-weight:600; margin:0 0 4px; color:var(--ink); }
+  .sheet .sub{ font-size:13px; color:var(--ink-muted-48); margin-bottom:14px; }
+  .search{
+    display:flex; align-items:center; gap:8px; background:var(--surface-pearl);
+    border:1px solid rgba(0,0,0,0.08); border-radius:999px; padding:9px 14px; margin-bottom:14px;
+  }
+  .search input{ border:none; background:none; outline:none; font-size:14px; flex:1; color:var(--ink); }
+  .chip-grid{ display:flex; flex-wrap:wrap; gap:10px; }
+  .chip{
+    display:flex; align-items:center; gap:8px; background:var(--canvas); border:1px solid var(--hairline);
+    border-radius:11px; padding:10px 12px; width:calc(50% - 5px);
+  }
+  .chip.selected{ border:2px solid var(--primary-focus); padding:9px 11px; }
+  .chip .thumb{
+    width:32px; height:32px; border-radius:8px; background:var(--canvas-parchment);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .chip .txt .n{ font-size:12px; font-weight:600; color:var(--ink); line-height:1.25; }
+  .chip .txt .e{ font-size:10px; color:var(--ink-muted-48); }
+
+  .confirm-btn{
+    width:100%; margin-top:16px; background:var(--primary); color:#fff; border:none;
+    border-radius:999px; padding:13px; font-size:15px; font-weight:600; cursor:pointer;
+  }
+
+  .icon{ display:inline-block; vertical-align:middle; }
+</style>
+</head>
+<body>
+
+<div class="device">
+  <div class="statusbar"><span>9:41</span><span>●●●●  📶  🔋</span></div>
+
+  <!-- TODAY SCREEN -->
+  <div class="screen active" id="screen-today">
+    <div class="topbar">
+      <div class="eyebrow">Thursday, Jul 24</div>
+      <h1>Today's session</h1>
+      <div class="meta"><span><b>60</b> min target</span><span><b>5</b> lifts</span><span><b>~7</b> min warm-up</span></div>
+    </div>
+
+    <div class="section-label">Primary lift</div>
+    <div class="lift-card primary">
+      <div class="lift-row-top">
+        <div>
+          <p class="lift-name">Barbell back squat</p>
+          <div class="lift-tag">Hypertrophy phase</div>
+        </div>
+        <button class="swap-btn" onclick="openSheet()">
+          <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+          Swap
+        </button>
+      </div>
+
+      <div class="prescription">
+        <div><div class="num">3</div><div class="lbl">sets</div></div>
+        <div><div class="num">8&ndash;10</div><div class="lbl">reps</div></div>
+        <div><div class="num">120</div><div class="lbl">lb target</div></div>
+        <div><div class="num">2&ndash;3m</div><div class="lbl">rest</div></div>
+      </div>
+
+      <div class="ref-row">
+        <div class="ref-chip">
+          <div class="k">Last time</div>
+          <div class="v">115 lb <span>× 3×10</span></div>
+        </div>
+        <div class="ref-chip">
+          <div class="k">PR · 6&ndash;10 reps</div>
+          <div class="v">125 lb <span>Jul 9</span></div>
+        </div>
+      </div>
+
+      <div class="rationale"><b>Why 120 lb:</b> last session all 10 reps were clean at 115 lb with room left in the tank — small step up today.</div>
+
+      <div class="cues">
+        <div class="clbl">Focus cues</div>
+        <span class="cue-pill">Brace before descending</span>
+        <span class="cue-pill">Knees track over toes</span>
+        <span class="cue-pill">Drive through mid-foot</span>
+      </div>
+
+      <button class="select-btn" onclick="setCurrent('Barbell back squat','Set 1 of 3 · 8–10 reps')">Start this lift</button>
+    </div>
+
+    <div class="section-label">Secondary</div>
+    <div class="lift-card">
+      <div class="lift-row-top">
+        <div><p class="lift-name">Close neutral grip lat pulldown</p><div class="lift-tag">Back &middot; 3 sets</div></div>
+        <button class="swap-btn" onclick="openSheet()">
+          <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+          Swap
+        </button>
+      </div>
+      <div class="ref-row">
+        <div class="ref-chip"><div class="k">Last time</div><div class="v">85 lb <span>× 3×10</span></div></div>
+        <div class="ref-chip"><div class="k">PR · 6&ndash;10</div><div class="v">90 lb <span>Jun 30</span></div></div>
+      </div>
+      <button class="select-btn" onclick="setCurrent('Lat pulldown','Set 1 of 3 · 10–12 reps')">Start this lift</button>
+    </div>
+
+    <div class="lift-card">
+      <div class="lift-row-top">
+        <div><p class="lift-name">Barbell reverse lunge</p><div class="lift-tag">Legs &middot; 3 sets</div></div>
+        <button class="swap-btn" onclick="openSheet()">
+          <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+          Swap
+        </button>
+      </div>
+      <div class="ref-row">
+        <div class="ref-chip"><div class="k">Last time</div><div class="v">75 lb <span>× 3×10</span></div></div>
+        <div class="ref-chip"><div class="k">PR · 6&ndash;10</div><div class="v">95 lb <span>Jul 2</span></div></div>
+      </div>
+      <button class="select-btn" onclick="setCurrent('Reverse lunge','Set 1 of 3 · 10–12 reps')">Start this lift</button>
+    </div>
+
+    <div class="section-label">Accessory &amp; core</div>
+    <div class="lift-card">
+      <div class="lift-row-top">
+        <div><p class="lift-name">Dumbbell bicep curl</p><div class="lift-tag">Arms &middot; 3 sets</div></div>
+        <button class="swap-btn" onclick="openSheet()">Swap</button>
+      </div>
+      <div class="ref-row">
+        <div class="ref-chip"><div class="k">Last time</div><div class="v">20 lb <span>× 3×12</span></div></div>
+        <div class="ref-chip"><div class="k">PR · 11&ndash;15</div><div class="v">25 lb <span>Jun 21</span></div></div>
+      </div>
+      <button class="select-btn" onclick="setCurrent('Bicep curl','Set 1 of 3 · 12–15 reps')">Start this lift</button>
+    </div>
+
+    <div class="lift-card">
+      <div class="lift-row-top">
+        <div><p class="lift-name">Anti-rotation core hold</p><div class="lift-tag">Corrective &middot; APT support &middot; 2 sets</div></div>
+      </div>
+      <button class="select-btn" onclick="setCurrent('Core hold','Set 1 of 2 · 30s hold')">Start this lift</button>
+    </div>
+
+    <div class="sticky-log" id="stickyLog">
+      <div class="cur">
+        <div class="name" id="curName">Select a lift to begin</div>
+        <div class="sub" id="curSub">Tap "Start this lift" above</div>
+      </div>
+      <input type="number" placeholder="lb" id="wIn">
+      <input type="number" placeholder="reps" id="rIn">
+      <button class="logbtn">Log set</button>
+    </div>
+  </div>
+
+  <!-- HISTORY SCREEN -->
+  <div class="screen" id="screen-history">
+    <div class="topbar">
+      <div class="eyebrow">Progress</div>
+      <h1>History &amp; PRs</h1>
+    </div>
+    <div class="section-label">Primary lifts</div>
+
+    <div class="hist-card">
+      <div class="hist-top">
+        <div class="name">Barbell back squat</div>
+        <div class="pr-badge">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6L22 9.3l-5 4.9 1.2 7.1L12 17.8l-6.2 3.5L7 14.2 2 9.3l7.1-.7z"/></svg>
+          125 lb PR
+        </div>
+      </div>
+      <svg class="sparkline" width="100%" height="48" viewBox="0 0 320 48" preserveAspectRatio="none">
+        <polyline points="0,38 45,32 90,34 135,24 180,26 225,14 270,10 320,6" fill="none" stroke="#0066cc" stroke-width="2.5"/>
+      </svg>
+      <div class="hist-foot"><span>6&ndash;10 rep bucket</span><span>Last: <b>115 lb</b> on Jul 22</span></div>
+    </div>
+
+    <div class="hist-card">
+      <div class="hist-top">
+        <div class="name">Barbell sumo deadlift</div>
+        <div class="pr-badge">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6L22 9.3l-5 4.9 1.2 7.1L12 17.8l-6.2 3.5L7 14.2 2 9.3l7.1-.7z"/></svg>
+          180 lb PR
+        </div>
+      </div>
+      <svg class="sparkline" width="100%" height="48" viewBox="0 0 320 48" preserveAspectRatio="none">
+        <polyline points="0,40 45,36 90,30 135,32 180,20 225,18 270,12 320,8" fill="none" stroke="#0066cc" stroke-width="2.5"/>
+      </svg>
+      <div class="hist-foot"><span>6&ndash;10 rep bucket</span><span>Last: <b>180 lb</b> on Jul 20</span></div>
+    </div>
+
+    <div class="section-label">Secondary</div>
+    <div class="hist-card">
+      <div class="hist-top">
+        <div class="name">Angled machine leg press</div>
+        <div class="pr-badge">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6L22 9.3l-5 4.9 1.2 7.1L12 17.8l-6.2 3.5L7 14.2 2 9.3l7.1-.7z"/></svg>
+          350 lb PR
+        </div>
+      </div>
+      <svg class="sparkline" width="100%" height="48" viewBox="0 0 320 48" preserveAspectRatio="none">
+        <polyline points="0,42 45,38 90,28 135,30 180,20 225,16 270,10 320,4" fill="none" stroke="#0066cc" stroke-width="2.5"/>
+      </svg>
+      <div class="hist-foot"><span>6&ndash;10 rep bucket</span><span>Last: <b>340 lb</b> on Jul 21</span></div>
+    </div>
+  </div>
+
+  <!-- PROFILE SCREEN -->
+  <div class="screen" id="screen-profile">
+    <div class="topbar">
+      <div class="eyebrow">Settings</div>
+      <h1>Profile</h1>
+    </div>
+    <div class="section-label">Session</div>
+    <div class="lift-card">
+      <div class="ref-row">
+        <div class="ref-chip"><div class="k">Session length</div><div class="v">60 min</div></div>
+        <div class="ref-chip"><div class="k">Location</div><div class="v">Home gym</div></div>
+      </div>
+    </div>
+    <div class="section-label">Standing exclusions</div>
+    <div class="lift-card">
+      <div class="lift-row-top">
+        <div><p class="lift-name">Chest-supported row machine</p><div class="lift-tag">Ergonomic fit &middot; excluded indefinitely</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SWAP SHEET -->
+  <div class="sheet-scrim" id="scrim" onclick="closeSheetOutside(event)">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h2>Swap exercise</h2>
+      <div class="sub">Alternatives targeting quads &amp; glutes</div>
+      <div class="search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a7a7a" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input placeholder="Search library">
+      </div>
+      <div class="chip-grid">
+        <div class="chip selected">
+          <div class="thumb"></div>
+          <div class="txt"><div class="n">Barbell back squat</div><div class="e">Barbell</div></div>
+        </div>
+        <div class="chip">
+          <div class="thumb"></div>
+          <div class="txt"><div class="n">Angled leg press</div><div class="e">Machine</div></div>
+        </div>
+        <div class="chip">
+          <div class="thumb"></div>
+          <div class="txt"><div class="n">Goblet squat</div><div class="e">Dumbbell</div></div>
+        </div>
+        <div class="chip">
+          <div class="thumb"></div>
+          <div class="txt"><div class="n">Bulgarian split squat</div><div class="e">Dumbbell</div></div>
+        </div>
+      </div>
+      <button class="confirm-btn" onclick="afterSwap()">Confirm swap</button>
+    </div>
+  </div>
+
+  <!-- POST-SWAP EXCLUSION PROMPT -->
+  <div class="sheet-scrim" id="scrimExclude">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h2>Exclude this lift?</h2>
+      <div class="sub">You swapped out barbell back squat. Should we stop programming it going forward?</div>
+      <div style="display:flex; gap:10px; margin-bottom:14px;">
+        <button class="chip" style="width:calc(50% - 5px); justify-content:center; cursor:pointer;" onclick="showReason()">
+          <div class="txt"><div class="n">Yes, exclude it</div></div>
+        </button>
+        <button class="chip" style="width:calc(50% - 5px); justify-content:center; cursor:pointer;" onclick="closeExclude()">
+          <div class="txt"><div class="n">No, just today</div></div>
+        </button>
+      </div>
+      <div id="reasonBlock" style="display:none;">
+        <div class="section-label" style="padding:0 0 8px;">Why exclude it?</div>
+        <div class="search" style="border-radius:11px;">
+          <input placeholder="e.g. bothers my lower back" id="reasonInput">
+        </div>
+        <button class="confirm-btn" onclick="saveExclusion()">Save exclusion</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIRMATION TOAST -->
+  <div id="toast" style="display:none; position:absolute; left:50%; bottom:120px; transform:translateX(-50%); background:var(--ink); color:#fff; font-size:13px; font-weight:600; padding:10px 16px; border-radius:999px; z-index:10; white-space:nowrap;"></div>
+
+  <div class="tabbar">
+    <button class="active" onclick="showScreen('today', this)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v4M18 3v4M4 8h16M5 21h14a1 1 0 001-1V7a1 1 0 00-1-1H5a1 1 0 00-1 1v13a1 1 0 001 1z"/></svg>
+      <span>Today</span>
+    </button>
+    <button onclick="showScreen('history', this)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
+      <span>History</span>
+    </button>
+    <button onclick="showScreen('profile', this)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+      <span>Profile</span>
+    </button>
+  </div>
+</div>
+
+<script>
+function showScreen(id, btn){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+id).classList.add('active');
+  document.querySelectorAll('.tabbar button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+function setCurrent(name, sub){
+  document.getElementById('curName').textContent = name;
+  document.getElementById('curSub').textContent = sub;
+}
+function openSheet(){ document.getElementById('scrim').classList.add('open'); }
+function closeSheet(){ document.getElementById('scrim').classList.remove('open'); }
+function closeSheetOutside(e){ if(e.target.id==='scrim') closeSheet(); }
+
+function afterSwap(){
+  closeSheet();
+  document.getElementById('scrimExclude').classList.add('open');
+}
+function closeExclude(){
+  document.getElementById('scrimExclude').classList.remove('open');
+  document.getElementById('reasonBlock').style.display='none';
+  document.getElementById('reasonInput').value='';
+  showToast('Swap applied for today only');
+}
+function showReason(){
+  document.getElementById('reasonBlock').style.display='block';
+}
+function saveExclusion(){
+  document.getElementById('scrimExclude').classList.remove('open');
+  document.getElementById('reasonBlock').style.display='none';
+  showToast('Excluded going forward — reason saved');
+}
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.style.display='block';
+  setTimeout(()=>{ t.style.display='none'; }, 2200);
+}
+</script>
+
+</body>
+</html>

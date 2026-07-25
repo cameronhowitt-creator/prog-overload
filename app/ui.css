@@ -1,0 +1,645 @@
+/* Shared UI classes — ported from workout_app_mockup.html (the fidelity reference)
+   and mapped to the locked component grammar (DESIGN-apple.md §9). */
+
+/* App shell: full-width on phones; a centered phone-width column on larger screens. */
+.app-shell {
+  max-width: 440px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  background: var(--canvas);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+@media (min-width: 480px) {
+  body {
+    background: var(--canvas-parchment);
+  }
+  .app-shell {
+    border-left: 1px solid var(--hairline);
+    border-right: 1px solid var(--hairline);
+  }
+}
+
+.scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+
+/* Top bar --------------------------------------------------------------------*/
+.topbar {
+  padding: max(12px, env(safe-area-inset-top)) 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid var(--divider-soft);
+}
+.topbar .eyebrow {
+  font-size: 12px;
+  letter-spacing: -0.12px;
+  color: var(--ink-muted-48);
+}
+.topbar h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.196px;
+  line-height: 1.14;
+  color: var(--ink);
+}
+.topbar .meta {
+  display: flex;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ink-muted-48);
+}
+.topbar .meta b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.section-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.224px;
+  color: var(--ink-muted-48);
+  text-transform: uppercase;
+  padding: 18px 20px 8px;
+}
+
+/* Cards — store-utility-card grammar ----------------------------------------*/
+.card {
+  margin: 0 20px 14px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+.card.primary {
+  border-color: var(--primary);
+  border-width: 1.5px;
+}
+
+.row-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.lift-name {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.374px;
+  color: var(--ink);
+  margin: 0;
+}
+.lift-tag {
+  font-size: 12px;
+  letter-spacing: -0.12px;
+  color: var(--ink-muted-48);
+  margin-top: 2px;
+}
+
+.swap-btn {
+  border: 1px solid var(--hairline);
+  background: var(--surface-pearl);
+  color: var(--ink-muted-80);
+  font-size: 12px;
+  letter-spacing: -0.224px;
+  border-radius: var(--radius-pill);
+  padding: 8px 12px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.prescription {
+  display: flex;
+  gap: 18px;
+  margin-top: 12px;
+}
+.prescription .num {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.2px;
+}
+.prescription .lbl {
+  font-size: 11px;
+  color: var(--ink-muted-48);
+  margin-top: 1px;
+}
+
+.ref-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.ref-chip {
+  flex: 1;
+  background: var(--canvas-parchment);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+}
+.ref-chip .k {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -0.08px;
+  color: var(--ink-muted-48);
+  text-transform: uppercase;
+}
+.ref-chip .v {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-top: 2px;
+}
+.ref-chip .v span {
+  font-weight: 400;
+  color: var(--ink-muted-48);
+  font-size: 12px;
+}
+
+.rationale {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--rationale-bg);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--rationale-ink);
+}
+.rationale b {
+  color: var(--primary-focus);
+}
+
+.cues {
+  margin-top: 12px;
+}
+.cues .clbl {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.08px;
+  color: var(--ink-muted-48);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.cue-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ink-muted-80);
+  background: var(--divider-soft);
+  border-radius: var(--radius-pill);
+  padding: 5px 10px;
+  margin: 0 6px 6px 0;
+}
+
+/* Buttons --------------------------------------------------------------------*/
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 13px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  min-height: 44px;
+  width: 100%;
+}
+.btn-dark {
+  width: 100%;
+  background: var(--ink);
+  color: var(--canvas);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.224px;
+  min-height: 44px;
+}
+.card.primary .btn-dark {
+  background: var(--primary);
+  color: #fff;
+}
+.btn-select {
+  margin-top: 14px;
+}
+.btn-ghost {
+  background: var(--surface-pearl);
+  color: var(--primary);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  min-height: 44px;
+}
+.text-link {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 0;
+}
+
+/* Inline set logger — on each lift card; type what you did, tap Log (§6.3) ----*/
+.log-inline {
+  margin-top: 14px;
+  padding: 12px;
+  background: var(--canvas-parchment);
+  border-radius: var(--radius-md);
+}
+.log-set-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.08px;
+  color: var(--ink-muted-48);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.log-fields {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.log-field {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+.log-field input {
+  width: 100%;
+  text-align: center;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 12px 30px 12px 8px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--canvas);
+  min-height: 48px;
+}
+.log-field span {
+  position: absolute;
+  right: 10px;
+  font-size: 11px;
+  color: var(--ink-muted-48);
+  pointer-events: none;
+}
+.log-times {
+  color: var(--ink-muted-48);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.log-inline .logbtn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 12px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  min-height: 48px;
+  flex-shrink: 0;
+}
+.log-inline .logbtn:disabled {
+  opacity: 0.5;
+}
+.log-done {
+  margin-top: 14px;
+  padding: 12px;
+  background: var(--canvas-parchment);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--success);
+  text-align: center;
+}
+
+/* Sticky log bar — floating-sticky-bar grammar; the core pattern (§6.3) -------*/
+.sticky-log {
+  position: sticky;
+  bottom: 0;
+  background: color-mix(in srgb, var(--canvas-parchment) 85%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid var(--hairline);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sticky-log .cur {
+  flex: 1;
+  min-width: 0;
+}
+.sticky-log .cur .name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sticky-log .cur .sub {
+  font-size: 11px;
+  color: var(--ink-muted-48);
+}
+.sticky-log input {
+  width: 56px;
+  text-align: center;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 10px 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--canvas);
+  min-height: 44px;
+}
+.sticky-log .logbtn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  min-height: 44px;
+}
+.sticky-log .logbtn:disabled {
+  opacity: 0.4;
+}
+
+/* Tab bar --------------------------------------------------------------------*/
+.tabbar {
+  display: flex;
+  border-top: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--canvas) 94%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding-bottom: env(safe-area-inset-bottom);
+  position: sticky;
+  bottom: 0;
+}
+.tabbar a {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 10px 4px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: var(--ink-muted-48);
+  min-height: 44px;
+}
+.tabbar a.active {
+  color: var(--primary);
+}
+.tabbar span {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -0.08px;
+}
+
+/* History cards + chart ------------------------------------------------------*/
+.pr-badge {
+  background: var(--pr-bg);
+  color: var(--pr-ink);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.chart {
+  margin: 12px 0 8px;
+  width: 100%;
+}
+.hist-foot {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--ink-muted-48);
+}
+.hist-foot b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Bottom sheet (swap picker, exclusion prompt) -------------------------------*/
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 50;
+}
+.sheet {
+  width: 100%;
+  max-width: 440px;
+  background: var(--canvas);
+  border-radius: 22px 22px 0 0;
+  padding: 16px 20px calc(24px + env(safe-area-inset-bottom));
+  max-height: 82dvh;
+  overflow-y: auto;
+}
+.sheet-handle {
+  width: 36px;
+  height: 5px;
+  background: var(--hairline);
+  border-radius: var(--radius-pill);
+  margin: 0 auto 14px;
+}
+.sheet h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: var(--ink);
+}
+.sheet .sub {
+  font-size: 13px;
+  color: var(--ink-muted-48);
+  margin-bottom: 14px;
+}
+
+/* Search input — pill grammar (§9) ------------------------------------------*/
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-pearl);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  padding: 9px 14px;
+  margin-bottom: 14px;
+  min-height: 44px;
+}
+.search input {
+  border: none;
+  background: none;
+  outline: none;
+  font-size: 15px;
+  flex: 1;
+  color: var(--ink);
+}
+
+/* Swap picker chips — configurator-option-chip grammar -----------------------*/
+.chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  width: calc(50% - 5px);
+  text-align: left;
+  min-height: 44px;
+}
+.chip.selected {
+  border: 2px solid var(--primary-focus);
+  padding: 9px 11px;
+}
+.chip .thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--canvas-parchment);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ink-muted-48);
+  font-size: 14px;
+  font-weight: 600;
+}
+.chip .txt .n {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.25;
+}
+.chip .txt .e {
+  font-size: 10px;
+  color: var(--ink-muted-48);
+}
+
+/* Forms / profile ------------------------------------------------------------*/
+.field {
+  margin: 0 20px 14px;
+}
+.field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.224px;
+  color: var(--ink-muted-48);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.field input,
+.field select {
+  width: 100%;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--canvas);
+  min-height: 44px;
+}
+.field .error {
+  color: var(--danger);
+  font-size: 12px;
+  margin-top: 6px;
+}
+.field input.invalid,
+.field select.invalid {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.list-row {
+  margin: 0 20px 10px;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.list-row .del {
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-muted {
+  font-size: 11px;
+  color: var(--ink-muted-48);
+  background: var(--canvas-parchment);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+/* Toast ----------------------------------------------------------------------*/
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--canvas);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: var(--radius-pill);
+  z-index: 60;
+  white-space: nowrap;
+}
+
+.empty {
+  color: var(--ink-muted-48);
+  font-size: 14px;
+  text-align: center;
+  padding: 32px 24px;
+}
+.spacer-sm {
+  height: 8px;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.inline-actions > * {
+  flex: 1;
+}
