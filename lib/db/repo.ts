@@ -19,7 +19,7 @@ import type {
 export interface Repository {
   // Profile ------------------------------------------------------------------
   getProfile(userId: string): Promise<Profile>;
-  updateProfile(userId: string, patch: Partial<Omit<Profile, "userId">>): Promise<Profile>;
+  updateProfile(userId: string, patch: Partial<Omit<Profile, "id">>): Promise<Profile>;
 
   // Standing exclusions (persist indefinitely — PRD §6.1) --------------------
   listExclusions(userId: string): Promise<Exclusion[]>;
@@ -59,10 +59,14 @@ export interface Repository {
   listLoggedSets(userId: string, exerciseId?: string): Promise<LoggedSet[]>;
   addLoggedSet(
     userId: string,
-    input: Omit<LoggedSet, "id" | "userId" | "loggedAt">,
+    // loggedAt may be supplied to backdate onboarding baselines; defaults to now.
+    input: Omit<LoggedSet, "id" | "userId" | "loggedAt"> & { loggedAt?: string },
   ): Promise<LoggedSet>;
   // Most recent logged occurrence of a lift, summarized (PRD §6.2 last-time).
   lastTimeFor(userId: string, exerciseId: string): Promise<LastTime | null>;
+  // Remove all onboarding-sourced baseline sets for a user, so re-entering the
+  // onboarding baseline step is idempotent (PRD §6.6).
+  clearOnboardingSets(userId: string): Promise<void>;
 
   // PRs — per lift per rep-range bucket (PRD §6.4) ---------------------------
   listPRs(userId: string, opts?: { onlyCurrent?: boolean }): Promise<PR[]>;

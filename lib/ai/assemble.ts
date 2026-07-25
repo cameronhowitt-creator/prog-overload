@@ -3,6 +3,7 @@
 // numbers Emma sees mid-set are always real, never model-hallucinated (PRD §6.2, §12).
 
 import {
+  DEFAULT_SESSION_MINUTES,
   DEFAULT_WARMUP_MINUTES,
   estimateLiftMinutes,
   repBucketFor,
@@ -67,7 +68,7 @@ export function assembleProgram(
   return {
     phase: result.phase,
     warmupMinutes,
-    targetMinutes: ctx.profile.sessionLengthMin,
+    targetMinutes: ctx.profile.sessionDurationMinutes ?? DEFAULT_SESSION_MINUTES,
     estimatedMinutes: warmupMinutes + liftMinutes,
     lifts,
     contextNote: result.contextNote,

@@ -61,9 +61,6 @@ export default function TodayClient({
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [toast, setToast] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
-  // Which lift the bottom quick-log bar mirrors — the one you last focused,
-  // defaulting to the first incomplete lift.
-  const [currentId, setCurrentId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   // Swap flow state
@@ -80,15 +77,11 @@ export default function TodayClient({
     [program.lifts, swapForId],
   );
 
-  // The lift the quick-log bar acts on: the focused one if still incomplete,
-  // otherwise the first incomplete lift. Null when the whole session is done.
-  const currentLift = useMemo(() => {
-    const incomplete = (l: ProgramLift) =>
-      (logs[l.exerciseId]?.length ?? 0) < l.sets;
-    const focused = program.lifts.find((l) => l.exerciseId === currentId);
-    if (focused && incomplete(focused)) return focused;
-    return program.lifts.find(incomplete) ?? null;
-  }, [program.lifts, currentId, logs]);
+  // Everything logged so far this session, in program order (PRD §6.3).
+  const loggedEntries = program.lifts
+    .map((l) => ({ lift: l, sets: logs[l.exerciseId] ?? [] }))
+    .filter((x) => x.sets.length > 0);
+  const totalLogged = loggedEntries.reduce((n, x) => n + x.sets.length, 0);
 
   const swapOptions = useMemo(() => {
     if (!swapLift) return [];
@@ -115,10 +108,8 @@ export default function TodayClient({
     setTimeout(() => setToast(null), 2400);
   }
 
-  // The draft values for a lift's next set: last-entered, else the prescription.
-  function draftFor(lift: ProgramLift): Draft {
-    const existing = drafts[lift.exerciseId];
-    if (existing) return existing;
+  // Prefill for a lift's next set: last set logged, else the prescription.
+  function defaultDraft(lift: ProgramLift): Draft {
     const done = logs[lift.exerciseId]?.length ?? 0;
     const prev = logs[lift.exerciseId]?.[done - 1];
     return {
@@ -126,20 +117,16 @@ export default function TodayClient({
       reps: String(prev?.reps ?? lift.repHigh),
     };
   }
-
-  function setDraft(exerciseId: string, patch: Partial<Draft>) {
+  function draftFor(lift: ProgramLift): Draft {
+    return drafts[lift.exerciseId] ?? defaultDraft(lift);
+  }
+  // Merge onto the current draft (functional update to avoid stale closures) so
+  // editing one field never clears the other's prefill.
+  function setDraft(lift: ProgramLift, patch: Partial<Draft>) {
     setDrafts((prev) => ({
       ...prev,
-      [exerciseId]: { ...draftForId(exerciseId), ...patch },
+      [lift.exerciseId]: { ...(prev[lift.exerciseId] ?? defaultDraft(lift)), ...patch },
     }));
-  }
-  function draftForId(exerciseId: string): Draft {
-    return (
-      drafts[exerciseId] ?? {
-        weight: "",
-        reps: "",
-      }
-    );
   }
 
   // Log the set the user just completed — straight to history (PRD §6.3).
@@ -256,14 +243,7 @@ export default function TodayClient({
                 {CATEGORY_LABEL[lift.category] ?? lift.category}
               </div>
             )}
-            <div
-              className={`card${isPrimary ? " primary" : ""}`}
-              style={
-                currentLift?.exerciseId === lift.exerciseId && !done
-                  ? { outline: "2px solid var(--primary)" }
-                  : undefined
-              }
-            >
+            <div className={`card${isPrimary ? " primary" : ""}`}>
               <div className="row-top">
                 <div style={{ minWidth: 0 }}>
                   <p className="lift-name">
@@ -375,10 +355,7 @@ export default function TodayClient({
                         placeholder="lb"
                         aria-label={`${lift.exerciseName} weight`}
                         value={d.weight}
-                        onFocus={() => setCurrentId(lift.exerciseId)}
-                        onChange={(e) =>
-                          setDraft(lift.exerciseId, { weight: e.target.value })
-                        }
+                        onChange={(e) => setDraft(lift, { weight: e.target.value })}
                       />
                       <span>lb</span>
                     </div>
@@ -390,10 +367,7 @@ export default function TodayClient({
                         placeholder="reps"
                         aria-label={`${lift.exerciseName} reps`}
                         value={d.reps}
-                        onFocus={() => setCurrentId(lift.exerciseId)}
-                        onChange={(e) =>
-                          setDraft(lift.exerciseId, { reps: e.target.value })
-                        }
+                        onChange={(e) => setDraft(lift, { reps: e.target.value })}
                       />
                       <span>reps</span>
                     </div>
@@ -461,52 +435,30 @@ export default function TodayClient({
         </button>
       </form>
 
-      {/* Bottom quick-log bar — thumb-reach mirror of the current lift (PRD §6.3).
-          Shares draft + set-count state with that lift's inline logger. */}
-      {currentLift &&
-        (() => {
-          const d = draftFor(currentLift);
-          const saving = savingId === currentLift.exerciseId;
-          return (
-            <div className="sticky-log">
-              <div className="cur">
-                <div className="name">{currentLift.exerciseName}</div>
-                <div className="sub">
-                  Set {(logs[currentLift.exerciseId]?.length ?? 0) + 1} of{" "}
-                  {currentLift.sets} · {fmtReps(currentLift.repLow, currentLift.repHigh)} reps
-                </div>
+      {/* Pinned session log — the running list of logged sets with details,
+          fixed to the bottom of the session (PRD §6.3). */}
+      {totalLogged > 0 && (
+        <div className="session-log">
+          <div className="session-log-head">
+            Session log · {totalLogged} {totalLogged === 1 ? "set" : "sets"}
+          </div>
+          <div className="session-log-list">
+            {loggedEntries.map(({ lift, sets }) => (
+              <div className="session-log-group" key={lift.exerciseId}>
+                <div className="session-log-name">{lift.exerciseName}</div>
+                {sets.map((s, i) => (
+                  <div className="session-log-row" key={i}>
+                    <span className="sl-set">Set {i + 1}</span>
+                    <span className="sl-val">
+                      {s.weight ? `${s.weight} lb` : "BW"} × {s.reps} reps
+                    </span>
+                  </div>
+                ))}
               </div>
-              <input
-                type="number"
-                inputMode="decimal"
-                placeholder="lb"
-                aria-label="Quick-log weight"
-                value={d.weight}
-                onChange={(e) =>
-                  setDraft(currentLift.exerciseId, { weight: e.target.value })
-                }
-              />
-              <input
-                type="number"
-                inputMode="numeric"
-                placeholder="reps"
-                aria-label="Quick-log reps"
-                value={d.reps}
-                onChange={(e) =>
-                  setDraft(currentLift.exerciseId, { reps: e.target.value })
-                }
-              />
-              <button
-                className="logbtn"
-                type="button"
-                onClick={() => logSet(currentLift)}
-                disabled={saving}
-              >
-                {saving ? "…" : "Log set"}
-              </button>
-            </div>
-          );
-        })()}
+            ))}
+          </div>
+        </div>
+      )}
 
       {toast && <div className="toast">{toast}</div>}
 

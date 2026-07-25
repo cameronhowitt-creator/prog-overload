@@ -4,7 +4,7 @@
 // the live generator has a correct reference implementation to match (PRD §6.2, §7).
 
 import type { Exercise } from "../domain/types";
-import { repRangeFor } from "../domain/heuristics";
+import { DEFAULT_SESSION_MINUTES, repRangeFor } from "../domain/heuristics";
 import { eligibleExercises } from "./context";
 import type {
   GenerationContext,
@@ -231,7 +231,7 @@ function trimToTarget(
     if (slot.optional && selections[i]) optionalExerciseIndexes.add(i);
   });
   // Rough estimate: warm-up + ~ (sets * 1.5 min) per lift.
-  const target = ctx.profile.sessionLengthMin;
+  const target = ctx.profile.sessionDurationMinutes ?? DEFAULT_SESSION_MINUTES;
   const estimate = () =>
     8 + selections.reduce((sum, s) => sum + s.sets * 1.5, 0);
 

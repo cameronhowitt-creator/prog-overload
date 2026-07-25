@@ -48,28 +48,26 @@ function emptyDB(): DBShape {
   };
 }
 
-// Serialize all reads/writes through a single promise chain to avoid interleaved
-// read-modify-write races within this process.
+// Serialize writes within a process via a single promise chain. We deliberately
+// keep NO long-lived in-memory cache: `next start` runs multiple worker processes,
+// and a per-process cache goes stale — combined with any write, one worker would
+// clobber another's file with old data. Reading fresh from disk each op avoids that.
 let writeChain: Promise<void> = Promise.resolve();
-let cache: DBShape | null = null;
 
 async function load(): Promise<DBShape> {
-  if (cache) return cache;
   try {
     const raw = await fs.readFile(DATA_FILE, "utf8");
     const parsed = JSON.parse(raw) as DBShape;
-    // Always refresh the exercise library from seed so library edits ship without
-    // a data migration (the library is code-owned; user data is not).
+    // The exercise library is code-owned; always refresh it from seed so library
+    // edits ship without a data migration.
     parsed.exercises = SEED_EXERCISES;
-    cache = parsed;
+    return parsed;
   } catch {
-    cache = emptyDB();
+    return emptyDB();
   }
-  return cache;
 }
 
 async function persist(db: DBShape): Promise<void> {
-  cache = db;
   await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.writeFile(DATA_FILE, JSON.stringify(db, null, 2), "utf8");
 }
@@ -90,12 +88,13 @@ async function mutate<T>(fn: (db: DBShape) => Promise<T> | T): Promise<T> {
 // Ensure a user has their seed rows (profile + the single standing exclusion).
 function ensureSeeded(db: DBShape, userId: string) {
   if (db.seededUsers.includes(userId)) return;
-  if (!db.profiles.find((p) => p.userId === userId)) {
+  if (!db.profiles.find((p) => p.id === userId)) {
     db.profiles.push({
-      userId,
-      sessionLengthMin: DEFAULT_SESSION_MINUTES,
-      goals: ["Progressive overload strength", "Hypertrophy"],
-      defaultEquipmentContext: "Full gym",
+      id: userId,
+      sessionDurationMinutes: DEFAULT_SESSION_MINUTES,
+      equipmentAccess: "full_gym",
+      userActiveLifts: [],
+      onboardingCompletedAt: null,
     });
   }
   db.exclusions.push({
@@ -114,17 +113,17 @@ export class LocalStore implements Repository {
   async getProfile(userId: string): Promise<Profile> {
     return mutate((db) => {
       ensureSeeded(db, userId);
-      return db.profiles.find((p) => p.userId === userId)!;
+      return db.profiles.find((p) => p.id === userId)!;
     });
   }
 
   async updateProfile(
     userId: string,
-    patch: Partial<Omit<Profile, "userId">>,
+    patch: Partial<Omit<Profile, "id">>,
   ): Promise<Profile> {
     return mutate((db) => {
       ensureSeeded(db, userId);
-      const p = db.profiles.find((x) => x.userId === userId)!;
+      const p = db.profiles.find((x) => x.id === userId)!;
       Object.assign(p, patch);
       return p;
     });
@@ -191,14 +190,13 @@ export class LocalStore implements Repository {
     userId: string,
     dateISO: string,
   ): Promise<LocationOverride | null> {
-    return mutate((db) => {
-      const active = db.overrides.filter(
-        (o) => o.userId === userId && o.startsOn <= dateISO && o.expiresOn >= dateISO,
-      );
-      // Most recently started active override wins.
-      active.sort((a, b) => b.startsOn.localeCompare(a.startsOn));
-      return active[0] ?? null;
-    });
+    const db = await load();
+    const active = db.overrides.filter(
+      (o) => o.userId === userId && o.startsOn <= dateISO && o.expiresOn >= dateISO,
+    );
+    // Most recently started active override wins.
+    active.sort((a, b) => b.startsOn.localeCompare(a.startsOn));
+    return active[0] ?? null;
   }
 
   async addOverride(
@@ -295,17 +293,27 @@ export class LocalStore implements Repository {
 
   async addLoggedSet(
     userId: string,
-    input: Omit<LoggedSet, "id" | "userId" | "loggedAt">,
+    input: Omit<LoggedSet, "id" | "userId" | "loggedAt"> & { loggedAt?: string },
   ): Promise<LoggedSet> {
     return mutate((db) => {
+      const { loggedAt, ...rest } = input;
       const row: LoggedSet = {
         id: randomUUID(),
         userId,
-        loggedAt: new Date().toISOString(),
-        ...input,
+        ...rest,
+        loggedAt: loggedAt ?? new Date().toISOString(),
+        source: rest.source ?? "app",
       };
       db.loggedSets.push(row);
       return row;
+    });
+  }
+
+  async clearOnboardingSets(userId: string): Promise<void> {
+    await mutate((db) => {
+      db.loggedSets = db.loggedSets.filter(
+        (l) => !(l.userId === userId && l.source === "onboarding"),
+      );
     });
   }
 

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getRepo, getUserId, todayISO } from "@/lib/db";
 import ThemeToggle from "./ThemeToggle";
 import {
@@ -5,6 +6,7 @@ import {
   addOverrideAction,
   removeExclusionAction,
   removeOverrideAction,
+  signOutAction,
   updateProfileAction,
 } from "./actions";
 
@@ -30,12 +32,19 @@ export default async function ProfilePage() {
   const userId = getUserId();
   const today = todayISO();
 
-  const [profile, exclusions, overrides, activeOverride] = await Promise.all([
-    repo.getProfile(userId),
-    repo.listExclusions(userId),
-    repo.listOverrides(userId),
-    repo.getActiveOverride(userId, today),
-  ]);
+  const [profile, exclusions, overrides, activeOverride, exercises] =
+    await Promise.all([
+      repo.getProfile(userId),
+      repo.listExclusions(userId),
+      repo.listOverrides(userId),
+      repo.getActiveOverride(userId, today),
+      repo.listExercises(),
+    ]);
+
+  const nameById = new Map(exercises.map((e) => [e.id, e.name]));
+  const activeLiftNames = (profile.userActiveLifts ?? [])
+    .map((id) => nameById.get(id))
+    .filter(Boolean) as string[];
 
   return (
     <>
@@ -44,37 +53,102 @@ export default async function ProfilePage() {
         <h1>Profile</h1>
       </div>
 
+      {/* Your lifts / starting point ---------------------------------------*/}
+      <div className="section-label">Your lifts</div>
+      <div className="card">
+        {activeLiftNames.length > 0 ? (
+          <>
+            <div className="lift-tag" style={{ marginBottom: 10 }}>
+              {activeLiftNames.length} active{" "}
+              {activeLiftNames.length === 1 ? "lift" : "lifts"} in your rotation
+            </div>
+            <div className="cues" style={{ marginTop: 0 }}>
+              {activeLiftNames.map((n) => (
+                <span className="cue-pill" key={n}>
+                  {n}
+                </span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="lift-tag" style={{ marginBottom: 10 }}>
+            No active lifts set — all lifts are eligible.
+          </div>
+        )}
+        <Link href="/onboarding" className="btn-ghost" style={{ display: "block", textAlign: "center", marginTop: 14 }}>
+          Update my lifts / starting point
+        </Link>
+      </div>
+
       {/* Appearance ---------------------------------------------------------*/}
       <div className="section-label">Appearance</div>
       <ThemeToggle />
 
-      {/* Session settings ---------------------------------------------------*/}
-      <div className="section-label">Session</div>
+      {/* Quick edits — weight, goal, creatine (PRD §6.1): no onboarding needed. */}
+      <div className="section-label">Quick edits</div>
       <form action={updateProfileAction}>
         <div className="field">
-          <label htmlFor="sessionLengthMin">Session length (min)</label>
+          <label htmlFor="weightKg">Bodyweight (kg)</label>
           <input
-            id="sessionLengthMin"
-            name="sessionLengthMin"
+            id="weightKg"
+            name="weightKg"
+            type="number"
+            step="0.1"
+            inputMode="decimal"
+            defaultValue={profile.weightKg ?? ""}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="primaryGoal">Primary goal</label>
+          <input
+            id="primaryGoal"
+            name="primaryGoal"
+            type="text"
+            defaultValue={profile.primaryGoal ?? ""}
+            placeholder="e.g. build strength"
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="creatineStatus">Creatine</label>
+          <select
+            id="creatineStatus"
+            name="creatineStatus"
+            defaultValue={profile.creatineStatus ?? ""}
+          >
+            <option value="">—</option>
+            <option value="yes">Taking it</option>
+            <option value="no">Not taking it</option>
+            <option value="considering">Considering</option>
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="sessionDurationMinutes">Session length (min)</label>
+          <input
+            id="sessionDurationMinutes"
+            name="sessionDurationMinutes"
             type="number"
             min={20}
             max={120}
-            defaultValue={profile.sessionLengthMin}
             inputMode="numeric"
+            defaultValue={profile.sessionDurationMinutes ?? 60}
           />
         </div>
         <div className="field">
-          <label htmlFor="defaultEquipmentContext">Default gym / equipment</label>
-          <input
-            id="defaultEquipmentContext"
-            name="defaultEquipmentContext"
-            type="text"
-            defaultValue={profile.defaultEquipmentContext}
-          />
+          <label htmlFor="equipmentAccess">Equipment access</label>
+          <select
+            id="equipmentAccess"
+            name="equipmentAccess"
+            defaultValue={profile.equipmentAccess ?? "full_gym"}
+          >
+            <option value="full_gym">Full gym</option>
+            <option value="home_gym">Home gym</option>
+            <option value="limited_dumbbells">Limited / dumbbells</option>
+            <option value="bodyweight">Bodyweight only</option>
+          </select>
         </div>
         <div className="field">
           <button className="btn-primary" type="submit">
-            Save session settings
+            Save
           </button>
         </div>
       </form>
@@ -206,6 +280,14 @@ export default async function ProfilePage() {
             Add exclusion
           </button>
         </div>
+      </form>
+
+      {/* Account -----------------------------------------------------------*/}
+      <div className="section-label">Account</div>
+      <form action={signOutAction} className="field">
+        <button className="btn-ghost" type="submit" style={{ width: "100%" }}>
+          Sign out
+        </button>
       </form>
 
       <div style={{ height: 24 }} />

@@ -75,30 +75,44 @@ function buildPrompt(ctx: GenerationContext): string {
   const range = repRangeFor(ctx.phase);
   const restCompound = restDefaultsFor("primary");
   const restIso = restDefaultsFor("accessory");
+  const p = ctx.profile;
+  const sessionMin = p.sessionDurationMinutes ?? 60;
 
   return [
-    `You are programming ONE strength session for an experienced lifter.`,
+    `You are programming ONE strength session for a lifter.`,
     `Date: ${ctx.date}. Training phase: ${ctx.phase} (default rep range ${range.low}-${range.high}).`,
-    `Session must fit ${ctx.profile.sessionLengthMin} minutes END TO END including a ~8 min warm-up.`,
+    `Session must fit ${sessionMin} minutes END TO END including a ~8 min warm-up.`,
     ctx.activeOverride
       ? `TEMPORARY context override in effect (do not treat as permanent): "${ctx.activeOverride.context}". Only use exercises whose equipment is available in this context.`
-      : `Default equipment context: ${ctx.profile.defaultEquipmentContext}.`,
+      : `Equipment access: ${p.equipmentAccess ?? "full_gym"}. Only prescribe lifts this equipment supports.`,
+    ``,
+    `Lifter profile (adapt the session to this):`,
+    p.experienceLevel ? `- Experience: ${p.experienceLevel}. Primary goal: ${p.primaryGoal ?? "general strength"}.` : null,
+    p.injuryFlags?.length ? `- INJURY flags: ${p.injuryFlags.join(", ")}. Prefer lifts that don't load these; add explicit technique-gating cues, and avoid aggravating ranges.` : null,
+    p.mobilityFlags?.length ? `- Mobility limitations: ${p.mobilityFlags.join(", ")}. Choose ranges/variations that respect these.` : null,
+    (p.typicalSleepHours != null || p.stressLevel || p.activityOutsideGym)
+      ? `- Recovery baseline: sleep ~${p.typicalSleepHours ?? "?"}h, stress ${p.stressLevel ?? "?"}, outside-gym activity ${p.activityOutsideGym ?? "?"}. If recovery looks compromised, bias toward the conservative end of load progression.`
+      : null,
+    p.cycleTrackingOptIn ? `- Menstrual-cycle-aware programming is opted in (cycle length ~${p.cycleLengthDays ?? "?"} days). Apply phase-appropriate load/volume guidance.` : null,
+    p.dislikedExercises?.length ? `- Disliked (avoid unless no alternative): ${JSON.stringify(p.dislikedExercises)}.` : null,
     ``,
     `Rules:`,
     `- Structure: 1 primary compound -> 2-3 secondary compounds/accessories -> 1-2 accessory/isolation -> 1 core -> 1 corrective (mobility).`,
     `- Keep designated core lifts (isCoreLift) stable across sessions for trackable progression; ROTATE the corrective so it isn't the same one repeatedly. Recently used correctives to avoid: ${JSON.stringify(ctx.recentCorrectiveIds)}.`,
     `- Rest is implied by category (compound ${restCompound.low}-${restCompound.high}s, isolation ${restIso.low}-${restIso.high}s) — you do not set rest.`,
-    `- For every lift WITH history, the rationale MUST reference the actual last set (weight x reps) and justify the target. Progress conservatively.`,
+    `- For every lift WITH history, the rationale MUST reference the actual last set (weight x reps) and justify the target. Progress conservatively. Onboarding-sourced history counts the same as live logs.`,
     `- For a lift with NO history, set weightTarget null and say it's the first logged session.`,
     `- Only pick exercises from the library below, by id. Never program an excluded exercise.`,
     ``,
     `Excluded (never program): ${JSON.stringify(ctx.exclusions.map((e) => e.exerciseName))}.`,
     ``,
-    `Exercise library (id, tags, and this lifter's history):`,
+    `Exercise library (id, tags, and this lifter's history — already filtered to their active lifts + equipment):`,
     JSON.stringify(library),
     ``,
     `Call ${TOOL_NAME} with the session.`,
-  ].join("\n");
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
 }
 
 export class AnthropicGenerator implements ProgramGenerator {

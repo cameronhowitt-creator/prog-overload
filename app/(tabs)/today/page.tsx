@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation";
 import { getRepo, getUserId, todayISO } from "@/lib/db";
 import { allowedEquipment } from "@/lib/ai/context";
+import { needsOnboarding } from "@/lib/onboarding";
 import { generateTodayAction } from "./actions";
 import TodayClient, { type SwapExercise } from "./TodayClient";
 
@@ -17,6 +19,10 @@ function prettyDate(iso: string): string {
 export default async function TodayPage() {
   const repo = getRepo();
   const userId = getUserId();
+
+  // Fresh users go through onboarding first (PRD onboarding).
+  if (await needsOnboarding(repo, userId)) redirect("/onboarding");
+
   const date = todayISO();
   const session = await repo.getSessionForDate(userId, date);
 
@@ -33,24 +39,31 @@ export default async function TodayPage() {
   }
 
   // Eligible library for the swap picker: exclusions + active-override equipment
-  // filtered, slimmed to what the picker needs (PRD §6.5).
+  // filtered, and — once onboarded — strength swaps limited to the active-lift
+  // list (core/mobility always available), matching generation (PRD §6.5, onboarding).
+  const STRENGTH = new Set(["primary", "secondary", "accessory"]);
   let swapLibrary: SwapExercise[] = [];
   if (session) {
-    const [exercises, exclusions, activeOverride] = await Promise.all([
+    const [exercises, exclusions, activeOverride, profile] = await Promise.all([
       repo.listExercises(),
       repo.listExclusions(userId),
       repo.getActiveOverride(userId, date),
+      repo.getProfile(userId),
     ]);
     const excludedIds = new Set(
       exclusions.map((e) => e.exerciseId).filter(Boolean) as string[],
     );
     const excludedNames = new Set(exclusions.map((e) => e.exerciseName.toLowerCase()));
     const allowed = allowedEquipment(activeOverride?.context ?? null);
+    const active = new Set(profile.userActiveLifts ?? []);
+    const restrictToActive = active.size > 0;
     swapLibrary = exercises
       .filter((ex) => {
         if (excludedIds.has(ex.id)) return false;
         if (excludedNames.has(ex.name.toLowerCase())) return false;
         if (allowed && ex.equipment !== "bodyweight" && !allowed.has(ex.equipment))
+          return false;
+        if (restrictToActive && STRENGTH.has(ex.category) && !active.has(ex.id))
           return false;
         return true;
       })

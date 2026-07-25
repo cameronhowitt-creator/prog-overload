@@ -41,11 +41,45 @@ export interface Exercise {
   correctiveGoal?: string;
 }
 
+export type ExperienceLevel = "new" | "under_1yr" | "1_3yr" | "3yr_plus";
+export type EquipmentAccess =
+  | "full_gym"
+  | "home_gym"
+  | "limited_dumbbells"
+  | "bodyweight";
+export type StressLevel = "low" | "moderate" | "high";
+export type ActivityOutsideGym = "sedentary" | "active_job" | "other_sport";
+export type CreatineStatus = "yes" | "no" | "considering";
+
+// Full user profile captured across onboarding (PRD §6.6). `id` is the auth user id.
+// Most fields are optional because onboarding saves incrementally, step by step.
 export interface Profile {
-  userId: string;
-  sessionLengthMin: number; // fixed default 60, end-to-end incl. warm-up (PRD §11.4)
-  goals: string[];
-  defaultEquipmentContext: string; // e.g. "Full gym"
+  id: string;
+  name?: string;
+  age?: number;
+  heightCm?: number;
+  weightKg?: number;
+  primaryGoal?: string;
+  experienceLevel?: ExperienceLevel;
+  daysPerWeek?: number;
+  sessionDurationMinutes?: number; // end-to-end incl. warm-up (PRD §11.4)
+  equipmentAccess?: EquipmentAccess;
+  injuryFlags?: string[];
+  mobilityFlags?: string[];
+  medicalClearanceStatus?: string;
+  pregnancyPostpartumStatus?: string;
+  cycleTrackingOptIn?: boolean;
+  cycleLengthDays?: number;
+  typicalSleepHours?: number;
+  stressLevel?: StressLevel;
+  activityOutsideGym?: ActivityOutsideGym;
+  creatineStatus?: CreatineStatus;
+  dislikedExercises?: string[];
+  onboardingCompletedAt?: string | null;
+  // The lifts the user currently trains (own table on Supabase, field on the local
+  // store). Drives which strength lifts the generator programs and which appear in
+  // the logging flow. Empty = unrestricted (pre-onboarding / legacy users).
+  userActiveLifts: string[]; // exercise ids
 }
 
 export interface Exclusion {
@@ -68,6 +102,10 @@ export interface LocationOverride {
   createdAt: string;
 }
 
+// Where a logged set came from: live in-app logging vs. a self-reported baseline
+// captured during onboarding (PRD §6.6). DB column defaults to "app".
+export type LogSource = "app" | "onboarding";
+
 export interface LoggedSet {
   id: string;
   userId: string;
@@ -78,6 +116,21 @@ export interface LoggedSet {
   weight: number;
   reps: number;
   loggedAt: string; // ISO
+  source?: LogSource; // defaults to "live"
+}
+
+// How recently the user last performed a lift, captured in onboarding. Mapped to
+// a concrete backdated date when persisted as a logged set.
+export type ApproxDate = "this_week" | "few_weeks_ago" | "over_a_month_ago";
+
+// A self-reported baseline entered during onboarding, before it's persisted as a
+// source: "onboarding" logged set (PRD §6.6).
+export interface OnboardingLiftEntry {
+  exerciseId: string;
+  weight?: number;
+  reps?: number;
+  approxDate?: ApproxDate;
+  source: "onboarding";
 }
 
 // A PR is tracked per lift AND per rep-range bucket. A new set overwrites its

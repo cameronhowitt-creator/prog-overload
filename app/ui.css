@@ -5,7 +5,9 @@
 .app-shell {
   max-width: 440px;
   margin: 0 auto;
-  min-height: 100dvh;
+  /* Fixed height so .scroll-area becomes the scroll container and the tab bar +
+     quick-log bar stack correctly at the bottom (not the whole page scrolling). */
+  height: 100dvh;
   background: var(--canvas);
   display: flex;
   flex-direction: column;
@@ -325,60 +327,47 @@
   text-align: center;
 }
 
-/* Sticky log bar — floating-sticky-bar grammar; the core pattern (§6.3) -------*/
-.sticky-log {
+/* Pinned session log — running list of logged sets, fixed to the bottom (§6.3) */
+.session-log {
   position: sticky;
   bottom: 0;
-  background: color-mix(in srgb, var(--canvas-parchment) 85%, transparent);
+  background: color-mix(in srgb, var(--canvas-parchment) 92%, transparent);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-top: 1px solid var(--hairline);
-  padding: 10px 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  max-height: 34dvh;
+  overflow-y: auto;
 }
-.sticky-log .cur {
-  flex: 1;
-  min-width: 0;
+.session-log-head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.08px;
+  color: var(--ink-muted-48);
+  text-transform: uppercase;
+  margin-bottom: 8px;
 }
-.sticky-log .cur .name {
+.session-log-group {
+  margin-bottom: 10px;
+}
+.session-log-name {
   font-size: 13px;
   font-weight: 600;
   color: var(--ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin-bottom: 2px;
 }
-.sticky-log .cur .sub {
-  font-size: 11px;
+.session-log-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 3px 0;
+}
+.session-log-row .sl-set {
   color: var(--ink-muted-48);
 }
-.sticky-log input {
-  width: 56px;
-  text-align: center;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  padding: 10px 4px;
-  font-size: 15px;
-  font-weight: 600;
+.session-log-row .sl-val {
   color: var(--ink);
-  background: var(--canvas);
-  min-height: 44px;
-}
-.sticky-log .logbtn {
-  background: var(--primary);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-pill);
-  padding: 12px 18px;
-  font-size: 14px;
   font-weight: 600;
-  white-space: nowrap;
-  min-height: 44px;
-}
-.sticky-log .logbtn:disabled {
-  opacity: 0.4;
 }
 
 /* Tab bar --------------------------------------------------------------------*/
@@ -642,4 +631,144 @@
 }
 .inline-actions > * {
   flex: 1;
+}
+
+/* Onboarding flow ------------------------------------------------------------*/
+.ob-progress {
+  display: flex;
+  gap: 6px;
+  padding: 16px 20px 4px;
+}
+.ob-progress span {
+  height: 4px;
+  flex: 1;
+  border-radius: var(--radius-pill);
+  background: var(--hairline);
+}
+.ob-progress span.on {
+  background: var(--primary);
+}
+.ob-step {
+  padding: 12px 20px 24px;
+}
+.ob-title {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  line-height: 1.15;
+  color: var(--ink);
+  margin: 8px 0 10px;
+}
+.ob-lead {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-muted-48);
+  margin: 0 0 20px;
+}
+.ob-lead b {
+  color: var(--ink);
+}
+.ob-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+.ob-actions .btn-ghost {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 13px 20px;
+}
+.ob-actions .btn-primary {
+  flex: 1;
+}
+.ob-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--divider-soft);
+}
+.ob-row-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+.ob-row-fields {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.seg {
+  display: flex;
+  gap: 6px;
+}
+.seg button {
+  flex: 1;
+  border: 1px solid var(--hairline);
+  background: var(--canvas);
+  color: var(--ink-muted-48);
+  border-radius: var(--radius-pill);
+  padding: 8px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  min-height: 40px;
+}
+.seg button.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  border-width: 2px;
+}
+.ob-summary {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 6px 14px;
+}
+.ob-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  font-size: 15px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--divider-soft);
+}
+.ob-summary-row:last-child {
+  border-bottom: none;
+}
+.ob-summary-row .ob-has {
+  font-weight: 600;
+  color: var(--primary);
+}
+.ob-summary-row .ob-none {
+  font-size: 13px;
+  color: var(--ink-muted-48);
+}
+.ob-privacy {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-muted-48);
+  background: var(--canvas-parchment);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  margin: 0 0 16px;
+}
+.ob-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+.ob-toggle input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--primary);
+}
+.cue-pill.on {
+  background: var(--primary);
+  color: #fff;
 }

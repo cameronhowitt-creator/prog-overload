@@ -59,16 +59,58 @@ per-user scoping without a schema change (§5, §8).
 ## Project map
 
 ```
+app/(auth)            Email/password sign-in + sign-up (Supabase)
+app/onboarding        11-step first-run flow (incremental save)
 app/(tabs)/today      Generate session · live logging · swap · in-flow exclude
 app/(tabs)/history    Per-lift weight charts + PR badges
-app/(tabs)/profile    Session settings · exclusions · dated overrides · theme
+app/(tabs)/profile    Quick edits (weight/goal/creatine) · lifts · exclusions · sign out
 app/manifest.ts       PWA manifest (add-to-home-screen)
+middleware.ts         Auth + onboarding gating (Supabase mode only)
+lib/auth              getUser / getSession / signOut (mock in dev)
+lib/supabase          SSR browser/server/middleware clients
 lib/domain            Types, §7 heuristics, PR logic, formatters
 lib/db                Repository interface + local + supabase stores
 lib/ai                Context assembly, mock + Claude generators, swap builder
+lib/onboarding        New-vs-returning detection
 lib/seed              Starter exercise library + seed exclusion
-supabase/migrations   Postgres schema + RLS
+supabase/migrations   Postgres schema + RLS (0001 init, 0002 profiles/onboarding)
 ```
+
+## Auth & onboarding
+
+**Auth (Supabase, PRD §6.6).** Email/password via `@supabase/ssr`. `middleware.ts`
+protects the app: unauthenticated users → `/sign-in`, and authenticated users whose
+`profiles.onboarding_completed_at` is null → `/onboarding`. In **mock-auth mode**
+(the default local-store dev path) the middleware is a no-op and a fixed dev user is
+used, so the app runs with zero Supabase setup — the mock branch is gated on
+`isSupabaseBackend()` and never touches the Supabase store. `lib/auth` exposes
+`getUser` / `getSession` / `signOut`; `lib/supabase/{client,server,middleware}.ts`
+hold the SSR clients.
+
+**Onboarding.** A fresh user is routed through an 11-step flow (`app/onboarding`):
+welcome → basic info → goals/experience → training logistics → lift selection →
+baselines → health & safety (with privacy copy) → cycle-tracking opt-in (off by
+default; cycle length only requested/stored if opted in) → recovery & lifestyle →
+extras → confirmation. **Every data step saves incrementally** to `profiles` (so a
+closed tab doesn't lose progress). Selected lifts become `profile.userActiveLifts`
+(the generator + swap picker only surface these strength lifts; core/mobility is
+programmed for them). Baselines are stored as backdated `source: "onboarding"`
+logged sets, driving the same progression as live logs (squat 3×8 @ 130 lb → 135 lb
+prescription). The full profile (equipment, injuries, recovery, cycle) feeds the AI
+context (`lib/ai/context.ts` + the Claude prompt). Re-runnable from Profile.
+
+### Going live on Supabase (handoff)
+
+The local store is the default and fully exercised; the Supabase path is coded but
+needs your project to apply + verify:
+1. Apply `supabase/migrations/0001_init.sql` then `0002_profiles_and_onboarding.sql`
+   in the Supabase SQL editor.
+2. `npm run seed:supabase` to seed the exercise catalog.
+3. Set `DATA_BACKEND=supabase` in `.env.local`.
+4. Verify RLS with Supabase's `get_advisors` (security) — the policies scope every
+   table to `auth.uid()`. Note: `SupabaseStore` currently uses the service-role key
+   (server-trusted, manually scoped by user id); switching it to a session-scoped
+   client so RLS is enforced end-to-end is the remaining prod-hardening step.
 
 ## Scope
 

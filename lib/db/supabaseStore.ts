@@ -67,6 +67,7 @@ const toLoggedSet = (r: any): LoggedSet => ({
   weight: Number(r.weight),
   reps: r.reps,
   loggedAt: r.logged_at,
+  source: r.source ?? "app",
 });
 const toPR = (r: any): PR => ({
   id: r.id,
@@ -98,6 +99,44 @@ export class SupabaseStore implements Repository {
   }
 
   // Profile ------------------------------------------------------------------
+  // Note: the profiles PK column is `user_id` (from 0001_init). It maps to the
+  // domain Profile.id. Active lifts live in their own `user_active_lifts` table.
+  private async fetchActiveLifts(userId: string): Promise<string[]> {
+    const { data } = await this.db
+      .from("user_active_lifts")
+      .select("exercise_id")
+      .eq("user_id", userId);
+    return (data ?? []).map((r) => r.exercise_id);
+  }
+
+  private rowToProfile(r: any, activeLifts: string[]): Profile {
+    return {
+      id: r.user_id,
+      name: r.name ?? undefined,
+      age: r.age ?? undefined,
+      heightCm: r.height_cm != null ? Number(r.height_cm) : undefined,
+      weightKg: r.weight_kg != null ? Number(r.weight_kg) : undefined,
+      primaryGoal: r.primary_goal ?? undefined,
+      experienceLevel: r.experience_level ?? undefined,
+      daysPerWeek: r.days_per_week ?? undefined,
+      sessionDurationMinutes: r.session_duration_minutes ?? undefined,
+      equipmentAccess: r.equipment_access ?? undefined,
+      injuryFlags: r.injury_flags ?? [],
+      mobilityFlags: r.mobility_flags ?? [],
+      medicalClearanceStatus: r.medical_clearance_status ?? undefined,
+      pregnancyPostpartumStatus: r.pregnancy_postpartum_status ?? undefined,
+      cycleTrackingOptIn: r.cycle_tracking_opt_in ?? false,
+      cycleLengthDays: r.cycle_length_days ?? undefined,
+      typicalSleepHours: r.typical_sleep_hours != null ? Number(r.typical_sleep_hours) : undefined,
+      stressLevel: r.stress_level ?? undefined,
+      activityOutsideGym: r.activity_outside_gym ?? undefined,
+      creatineStatus: r.creatine_status ?? undefined,
+      dislikedExercises: r.disliked_exercises ?? [],
+      onboardingCompletedAt: r.onboarding_completed_at ?? null,
+      userActiveLifts: activeLifts,
+    };
+  }
+
   async getProfile(userId: string): Promise<Profile> {
     const { data } = await this.db
       .from("profiles")
@@ -105,25 +144,13 @@ export class SupabaseStore implements Repository {
       .eq("user_id", userId)
       .maybeSingle();
     if (data) {
-      return {
-        userId,
-        sessionLengthMin: data.session_length_min,
-        goals: data.goals ?? [],
-        defaultEquipmentContext: data.default_equipment_context,
-      };
+      return this.rowToProfile(data, await this.fetchActiveLifts(userId));
     }
     // First touch: seed the profile + the single standing exclusion (PRD §6.1).
-    const seeded: Profile = {
-      userId,
-      sessionLengthMin: DEFAULT_SESSION_MINUTES,
-      goals: ["Progressive overload strength", "Hypertrophy"],
-      defaultEquipmentContext: "Full gym",
-    };
     await this.db.from("profiles").insert({
       user_id: userId,
-      session_length_min: seeded.sessionLengthMin,
-      goals: seeded.goals,
-      default_equipment_context: seeded.defaultEquipmentContext,
+      session_duration_minutes: DEFAULT_SESSION_MINUTES,
+      equipment_access: "full_gym",
     });
     await this.db.from("exclusions").insert({
       user_id: userId,
@@ -131,19 +158,61 @@ export class SupabaseStore implements Repository {
       exercise_name: SEED_EXCLUSION.exerciseName,
       reason: SEED_EXCLUSION.reason,
     });
-    return seeded;
+    return {
+      id: userId,
+      sessionDurationMinutes: DEFAULT_SESSION_MINUTES,
+      equipmentAccess: "full_gym",
+      injuryFlags: [],
+      mobilityFlags: [],
+      dislikedExercises: [],
+      onboardingCompletedAt: null,
+      userActiveLifts: [],
+    };
   }
 
   async updateProfile(
     userId: string,
-    patch: Partial<Omit<Profile, "userId">>,
+    patch: Partial<Omit<Profile, "id">>,
   ): Promise<Profile> {
     await this.getProfile(userId); // ensure it exists
+
+    // Active lifts live in their own table — sync it separately (PRD §6.6).
+    if (patch.userActiveLifts !== undefined) {
+      await this.db.from("user_active_lifts").delete().eq("user_id", userId);
+      if (patch.userActiveLifts.length > 0) {
+        await this.db.from("user_active_lifts").insert(
+          patch.userActiveLifts.map((exercise_id) => ({ user_id: userId, exercise_id })),
+        );
+      }
+    }
+
     const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (patch.sessionLengthMin !== undefined) row.session_length_min = patch.sessionLengthMin;
-    if (patch.goals !== undefined) row.goals = patch.goals;
-    if (patch.defaultEquipmentContext !== undefined)
-      row.default_equipment_context = patch.defaultEquipmentContext;
+    const map: [keyof Omit<Profile, "id">, string][] = [
+      ["name", "name"],
+      ["age", "age"],
+      ["heightCm", "height_cm"],
+      ["weightKg", "weight_kg"],
+      ["primaryGoal", "primary_goal"],
+      ["experienceLevel", "experience_level"],
+      ["daysPerWeek", "days_per_week"],
+      ["sessionDurationMinutes", "session_duration_minutes"],
+      ["equipmentAccess", "equipment_access"],
+      ["injuryFlags", "injury_flags"],
+      ["mobilityFlags", "mobility_flags"],
+      ["medicalClearanceStatus", "medical_clearance_status"],
+      ["pregnancyPostpartumStatus", "pregnancy_postpartum_status"],
+      ["cycleTrackingOptIn", "cycle_tracking_opt_in"],
+      ["cycleLengthDays", "cycle_length_days"],
+      ["typicalSleepHours", "typical_sleep_hours"],
+      ["stressLevel", "stress_level"],
+      ["activityOutsideGym", "activity_outside_gym"],
+      ["creatineStatus", "creatine_status"],
+      ["dislikedExercises", "disliked_exercises"],
+      ["onboardingCompletedAt", "onboarding_completed_at"],
+    ];
+    for (const [key, col] of map) {
+      if (patch[key] !== undefined) row[col] = patch[key];
+    }
     await this.db.from("profiles").update(row).eq("user_id", userId);
     return this.getProfile(userId);
   }
@@ -326,7 +395,7 @@ export class SupabaseStore implements Repository {
 
   async addLoggedSet(
     userId: string,
-    input: Omit<LoggedSet, "id" | "userId" | "loggedAt">,
+    input: Omit<LoggedSet, "id" | "userId" | "loggedAt"> & { loggedAt?: string },
   ): Promise<LoggedSet> {
     const { data } = await this.db
       .from("logged_sets")
@@ -339,10 +408,20 @@ export class SupabaseStore implements Repository {
         set_index: input.setIndex,
         weight: input.weight,
         reps: input.reps,
+        source: input.source ?? "app",
+        ...(input.loggedAt ? { logged_at: input.loggedAt } : {}),
       })
       .select("*")
       .single();
     return toLoggedSet(data);
+  }
+
+  async clearOnboardingSets(userId: string): Promise<void> {
+    await this.db
+      .from("logged_sets")
+      .delete()
+      .eq("user_id", userId)
+      .eq("source", "onboarding");
   }
 
   async lastTimeFor(userId: string, exerciseId: string): Promise<LastTime | null> {

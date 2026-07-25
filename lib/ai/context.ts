@@ -53,9 +53,16 @@ export async function buildGenerationContext(
   };
 }
 
-// Which library exercises are eligible: not excluded, and (if a temporary override
-// restricts equipment) equipment-compatible. Free-text override is keyword-scanned
-// for equipment terms — bodyweight is always allowed (PRD §6.1, §6.5).
+// Strength categories the user explicitly "trains" and selects in onboarding.
+// Core and mobility/corrective work is programmed supplementally and is NOT
+// gated by the active-lift list.
+const STRENGTH_CATEGORIES = new Set(["primary", "secondary", "accessory"]);
+
+// Which library exercises are eligible: not excluded, equipment-compatible (if a
+// temporary override restricts equipment), and — once the user has onboarded — a
+// STRENGTH lift only if it's in their active-lift list. Empty active list means
+// unrestricted (legacy / pre-onboarding). Free-text override is keyword-scanned
+// for equipment terms; bodyweight is always allowed (PRD §6.1, §6.5, onboarding).
 export function eligibleExercises(ctx: GenerationContext) {
   const excludedIds = new Set(
     ctx.exclusions.map((e) => e.exerciseId).filter(Boolean) as string[],
@@ -64,7 +71,14 @@ export function eligibleExercises(ctx: GenerationContext) {
     ctx.exclusions.map((e) => e.exerciseName.toLowerCase()),
   );
 
-  const allowed = allowedEquipment(ctx.activeOverride?.context ?? null);
+  // A temporary override takes precedence over the profile's standing equipment
+  // access (e.g. hotel this week overrides "full gym"); otherwise the profile
+  // equipmentAccess (from onboarding) constrains what can be prescribed.
+  const overrideAllowed = allowedEquipment(ctx.activeOverride?.context ?? null);
+  const allowed = overrideAllowed ?? equipmentForAccess(ctx.profile.equipmentAccess);
+  const active = ctx.profile.userActiveLifts ?? [];
+  const restrictToActive = active.length > 0;
+  const activeSet = new Set(active);
 
   return ctx.library.filter((ex) => {
     if (excludedIds.has(ex.id)) return false;
@@ -72,8 +86,32 @@ export function eligibleExercises(ctx: GenerationContext) {
     if (allowed && ex.equipment !== "bodyweight" && !allowed.has(ex.equipment)) {
       return false;
     }
+    if (
+      restrictToActive &&
+      STRENGTH_CATEGORIES.has(ex.category) &&
+      !activeSet.has(ex.id)
+    ) {
+      return false;
+    }
     return true;
   });
+}
+
+// Which equipment the profile's standing access supports (PRD §6.6). null = all.
+export function equipmentForAccess(
+  access: import("../domain/types").EquipmentAccess | undefined,
+): Set<string> | null {
+  switch (access) {
+    case "home_gym":
+      return new Set(["barbell", "dumbbell", "kettlebell", "bands", "trap-bar", "bodyweight"]);
+    case "limited_dumbbells":
+      return new Set(["dumbbell", "kettlebell", "bands", "bodyweight"]);
+    case "bodyweight":
+      return new Set(["bodyweight"]);
+    case "full_gym":
+    default:
+      return null; // everything
+  }
 }
 
 const EQUIPMENT_KEYWORDS: Record<string, string[]> = {
