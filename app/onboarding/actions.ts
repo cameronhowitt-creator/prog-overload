@@ -62,7 +62,9 @@ export async function saveBaselinesAction(entries: OnboardingLiftEntry[]) {
     const ex = byId.get(entry.exerciseId);
     if (!ex) continue;
     const set = await repo.addLoggedSet(userId, {
-      sessionId: "onboarding",
+      // No session exists at onboarding time — session_id is a nullable UUID FK,
+      // not a tag. The baseline is tagged via source: "onboarding" below.
+      sessionId: null,
       exerciseId: ex.id,
       exerciseName: ex.name,
       setIndex: 0,

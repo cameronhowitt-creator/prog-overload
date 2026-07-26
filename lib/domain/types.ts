@@ -114,7 +114,8 @@ export type LogSource = "app" | "onboarding";
 export interface LoggedSet {
   id: string;
   userId: string;
-  sessionId: string;
+  // Nullable UUID FK to sessions — null for onboarding baselines (no session yet).
+  sessionId: string | null;
   exerciseId: string;
   exerciseName: string;
   setIndex: number;
