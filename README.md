@@ -127,3 +127,5 @@ needs your project to apply + verify:
 
 V1 covers PRD §6.1–§6.5 and §9. Deferred (§4, §10): YouTube link-out, in-app rest
 timers, calendar/travel detection, media embedding.
+
+<!-- deploy trigger -->
