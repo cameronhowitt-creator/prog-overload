@@ -2,8 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getRepo, getUserId } from "@/lib/db";
-import { signOut } from "@/lib/auth";
+import { getRepo } from "@/lib/db";
+import { requireUserId, signOut } from "@/lib/auth";
 
 export async function signOutAction() {
   await signOut();
@@ -24,7 +24,7 @@ export async function setUnitsAction(formData: FormData) {
   const u = String(formData.get("unitsPreference") ?? "");
   if (u !== "imperial" && u !== "metric") return;
   const repo = getRepo();
-  await repo.updateProfile(getUserId(), { unitsPreference: u as UnitsPreference });
+  await repo.updateProfile((await requireUserId()), { unitsPreference: u as UnitsPreference });
   revalidatePath("/profile");
   revalidatePath("/today");
   revalidatePath("/history");
@@ -36,7 +36,7 @@ export async function setUnitsAction(formData: FormData) {
 // weight input is in the user's DISPLAY unit; converted to canonical kg here.
 export async function updateProfileAction(formData: FormData) {
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
   const patch: Partial<Omit<Profile, "id">> = {};
 
   if (formData.has("weight")) {
@@ -76,7 +76,7 @@ export async function addExclusionAction(formData: FormData) {
   if (!exerciseName || !reason) return; // both required (PRD §6.1)
 
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
   // If the name matches a library exercise, capture its id too.
   const exercises = await repo.listExercises();
   const match = exercises.find(
@@ -95,7 +95,7 @@ export async function removeExclusionAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const repo = getRepo();
-  await repo.removeExclusion(getUserId(), id);
+  await repo.removeExclusion((await requireUserId()), id);
   revalidatePath("/profile");
   revalidatePath("/today");
 }
@@ -108,7 +108,7 @@ export async function addOverrideAction(formData: FormData) {
   if (expiresOn < startsOn) return; // guard against inverted ranges
 
   const repo = getRepo();
-  await repo.addOverride(getUserId(), { context, startsOn, expiresOn });
+  await repo.addOverride((await requireUserId()), { context, startsOn, expiresOn });
   revalidatePath("/profile");
   revalidatePath("/today");
 }
@@ -117,7 +117,7 @@ export async function removeOverrideAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const repo = getRepo();
-  await repo.removeOverride(getUserId(), id);
+  await repo.removeOverride((await requireUserId()), id);
   revalidatePath("/profile");
   revalidatePath("/today");
 }

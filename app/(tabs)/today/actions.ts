@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
-import { getRepo, getUserId, todayISO } from "@/lib/db";
+import { getRepo, todayISO } from "@/lib/db";
+import { requireUserId } from "@/lib/auth";
 import { generateProgram } from "@/lib/ai";
 import { buildSwapLift } from "@/lib/ai/swap";
 import type { Session } from "@/lib/domain/types";
@@ -19,7 +20,7 @@ export async function logSetAction(input: {
   reps: number;
 }): Promise<{ isNewPR: boolean; prWeight: number | null; bucket: string | null }> {
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
 
   const set = await repo.addLoggedSet(userId, {
     sessionId: input.sessionId,
@@ -45,7 +46,7 @@ export async function logSetAction(input: {
 // Generate (or regenerate) today's session and persist it (PRD §6.2).
 export async function generateTodayAction() {
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
   const date = todayISO();
 
   const { program } = await generateProgram(repo, userId, date);
@@ -69,7 +70,7 @@ export async function swapLiftAction(input: {
   newExerciseId: string;
 }): Promise<void> {
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
   const session = await repo.getSession(userId, input.sessionId);
   if (!session) return;
 
@@ -112,7 +113,7 @@ export async function excludeOriginalAction(input: {
 }): Promise<void> {
   if (!input.exerciseName || !input.reason.trim()) return;
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
   await repo.addExclusion(userId, {
     exerciseId: input.exerciseId || null,
     exerciseName: input.exerciseName,
@@ -130,7 +131,7 @@ export async function excludeAndRegenerateAction(formData: FormData) {
   if (!exerciseName || !reason) return;
 
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
   await repo.addExclusion(userId, {
     exerciseId: exerciseId || null,
     exerciseName,

@@ -22,6 +22,20 @@ export async function getUser(): Promise<AuthUser | null> {
   return data.user ? { id: data.user.id, email: data.user.email } : null;
 }
 
+// The authoritative user id for the current request. In mock-auth (local store)
+// mode this is the fixed dev id; in Supabase mode it is STRICTLY the authenticated
+// session user — it never falls back to DEV_USER_ID or any env value. Throws when
+// no session is present so callers fail loudly instead of writing to a phantom id.
+export async function requireUserId(): Promise<string> {
+  const user = await getUser();
+  if (!user?.id) {
+    throw new Error(
+      "No authenticated user — a valid Supabase session is required for this action.",
+    );
+  }
+  return user.id;
+}
+
 export async function getSession() {
   if (!isSupabaseBackend()) return { user: MOCK_USER };
   const { createSupabaseServerClient } = await import("@/lib/supabase/server");

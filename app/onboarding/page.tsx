@@ -1,4 +1,5 @@
-import { getRepo, getUserId } from "@/lib/db";
+import { getRepo } from "@/lib/db";
+import { requireUserId } from "@/lib/auth";
 import type { MovementCategory } from "@/lib/domain/types";
 import OnboardingFlow, { type OnboardingLift } from "./OnboardingFlow";
 
@@ -13,7 +14,7 @@ const GROUPS: { category: MovementCategory; label: string }[] = [
 
 export default async function OnboardingPage() {
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
   const [exercises, profile] = await Promise.all([
     repo.listExercises(),
     repo.getProfile(userId),

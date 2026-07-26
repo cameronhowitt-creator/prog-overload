@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
-import { getRepo, getUserId, todayISO } from "@/lib/db";
+import { getRepo, todayISO } from "@/lib/db";
+import { requireUserId } from "@/lib/auth";
 import { generateProgram } from "@/lib/ai";
 import type {
   ApproxDate,
@@ -29,26 +30,35 @@ export async function saveProfileStepAction(
   patch: Partial<Omit<Profile, "id" | "onboardingCompletedAt" | "userActiveLifts">>,
 ) {
   const repo = getRepo();
-  await repo.updateProfile(getUserId(), patch);
+  await repo.updateProfile(await requireUserId(), patch);
 }
 
 // Step 2a — persist the selected active lifts.
 export async function saveActiveLiftsAction(exerciseIds: string[]) {
   const repo = getRepo();
-  await repo.updateProfile(getUserId(), { userActiveLifts: exerciseIds });
+  await repo.updateProfile(await requireUserId(), { userActiveLifts: exerciseIds });
 }
 
 // Step 2b — persist baselines as backdated source:"onboarding" logged sets.
 // Clears prior onboarding sets first so re-visiting the step is idempotent.
 export async function saveBaselinesAction(entries: OnboardingLiftEntry[]) {
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
   await repo.clearOnboardingSets(userId);
 
   const library = await repo.listExercises();
   const byId = new Map(library.map((e) => [e.id, e]));
   for (const entry of entries) {
-    if (!entry.weight || !entry.reps) continue; // blank → first-time later
+    // Skip blank baselines entirely — never call addLoggedSet with undefined
+    // weight/reps (would violate logged_sets NOT NULL constraints).
+    if (
+      entry.weight == null ||
+      entry.reps == null ||
+      entry.weight <= 0 ||
+      entry.reps <= 0
+    ) {
+      continue;
+    }
     const ex = byId.get(entry.exerciseId);
     if (!ex) continue;
     const set = await repo.addLoggedSet(userId, {
@@ -68,7 +78,7 @@ export async function saveBaselinesAction(entries: OnboardingLiftEntry[]) {
 // Final step — stamp completion, generate the first (progressed) session, route in.
 export async function completeOnboardingAction() {
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
 
   await repo.updateProfile(userId, {
     onboardingCompletedAt: new Date().toISOString(),

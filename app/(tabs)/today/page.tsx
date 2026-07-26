@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { getRepo, getUserId, todayISO } from "@/lib/db";
+import { getRepo, todayISO } from "@/lib/db";
+import { requireUserId } from "@/lib/auth";
 import { allowedEquipment } from "@/lib/ai/context";
 import { needsOnboarding } from "@/lib/onboarding";
 import { resolveUnits } from "@/lib/domain/units";
@@ -19,7 +20,7 @@ function prettyDate(iso: string): string {
 
 export default async function TodayPage() {
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
 
   // Fresh users go through onboarding first (PRD onboarding).
   if (await needsOnboarding(repo, userId)) redirect("/onboarding");

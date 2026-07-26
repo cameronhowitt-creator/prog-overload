@@ -28,15 +28,18 @@ export function getRepo(): Repository {
 export const DEV_USER_ID =
   process.env.DEV_USER_ID ?? "00000000-0000-0000-0000-000000000001";
 
-// Resolve the current user id for server actions/pages. In mock-auth (local store)
-// mode this is the fixed dev UUID.
-//
-// SUPABASE-MODE FOLLOW-UP: in Supabase mode this must return the authenticated
-// user's id. Because request scoping can't be a module-global (concurrent requests
-// would clobber it), authenticated entrypoints should resolve it explicitly via
-// `getUser()` from lib/auth and pass it down — do NOT rely on this fixed id in
-// production. RLS (auth.uid()) is the DB-level backstop.
+// Resolve the current user id for LOCAL/mock-auth mode only (the fixed dev UUID).
+// In Supabase mode this MUST NOT be used — DEV_USER_ID is a dev-only construct and
+// writing to it in production produces phantom rows / FK violations. Authenticated
+// entrypoints resolve the real session id via `requireUserId()` from lib/auth; this
+// throws in Supabase mode so a stray caller fails loudly instead of silently using
+// the dev id.
 export function getUserId(): string {
+  if (isSupabaseBackend()) {
+    throw new Error(
+      "getUserId() is local-mode only. In Supabase mode use requireUserId() from lib/auth to resolve the authenticated session user.",
+    );
+  }
   return DEV_USER_ID;
 }
 

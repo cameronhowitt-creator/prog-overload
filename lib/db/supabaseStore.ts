@@ -2,8 +2,16 @@
 // backend. Uses the service-role client on the server and scopes EVERY query by
 // user_id; RLS additionally protects any client-side (anon) access. Enable with
 // DATA_BACKEND=supabase. The local JSON store remains the zero-setup default.
+//
+// Every call checks `error` and throws a descriptive Error — Supabase never throws
+// on failed queries, it returns { data: null, error }. Swallowing that error made a
+// FK-violating profiles insert look like success and left the table empty.
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  type PostgrestError,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 
 import type {
@@ -20,6 +28,18 @@ import type {
 import { beatsPR, DEFAULT_SESSION_MINUTES, repBucketFor } from "../domain/heuristics";
 import { SEED_EXCLUSION, SEED_EXERCISES } from "../seed/exercises";
 import type { Repository } from "./repo";
+
+// Throw a descriptive error (with the Supabase code/details) on any failure.
+function check(error: PostgrestError | null, ctx: string): void {
+  if (error) {
+    throw new Error(
+      `Supabase ${ctx} failed: ${error.message}` +
+        (error.code ? ` [${error.code}]` : "") +
+        (error.details ? ` — ${error.details}` : "") +
+        (error.hint ? ` (hint: ${error.hint})` : ""),
+    );
+  }
+}
 
 // ── row <-> domain mappers ────────────────────────────────────────────────────
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -102,10 +122,11 @@ export class SupabaseStore implements Repository {
   // Note: the profiles PK column is `user_id` (from 0001_init). It maps to the
   // domain Profile.id. Active lifts live in their own `user_active_lifts` table.
   private async fetchActiveLifts(userId: string): Promise<string[]> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("user_active_lifts")
       .select("exercise_id")
       .eq("user_id", userId);
+    check(error, "select user_active_lifts");
     return (data ?? []).map((r) => r.exercise_id);
   }
 
@@ -139,51 +160,79 @@ export class SupabaseStore implements Repository {
   }
 
   async getProfile(userId: string): Promise<Profile> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("profiles")
       .select("*")
       .eq("user_id", userId)
       .maybeSingle();
+    check(error, "select profiles");
     if (data) {
       return this.rowToProfile(data, await this.fetchActiveLifts(userId));
     }
-    // First touch: seed the profile + the single standing exclusion (PRD §6.1).
-    await this.db.from("profiles").insert({
-      user_id: userId,
-      session_duration_minutes: DEFAULT_SESSION_MINUTES,
-      equipment_access: "full_gym",
-    });
-    await this.db.from("exclusions").insert({
-      user_id: userId,
-      exercise_id: SEED_EXCLUSION.exerciseId,
-      exercise_name: SEED_EXCLUSION.exerciseName,
-      reason: SEED_EXCLUSION.reason,
-    });
-    return {
-      id: userId,
-      sessionDurationMinutes: DEFAULT_SESSION_MINUTES,
-      equipmentAccess: "full_gym",
-      injuryFlags: [],
-      mobilityFlags: [],
-      dislikedExercises: [],
-      onboardingCompletedAt: null,
-      userActiveLifts: [],
-    };
+
+    // First touch: seed the profile (idempotent so concurrent first requests don't
+    // collide) + the single standing exclusion. A FK violation here means the
+    // user_id isn't a real auth.users row — surface it loudly (that was the bug).
+    const { error: pErr } = await this.db.from("profiles").upsert(
+      {
+        user_id: userId,
+        session_duration_minutes: DEFAULT_SESSION_MINUTES,
+        equipment_access: "full_gym",
+      },
+      { onConflict: "user_id", ignoreDuplicates: true },
+    );
+    check(pErr, "seed insert profiles");
+
+    // Seed the standing exclusion only if the user has none yet (idempotent).
+    const { data: existingExcl, error: exSelErr } = await this.db
+      .from("exclusions")
+      .select("id")
+      .eq("user_id", userId)
+      .limit(1);
+    check(exSelErr, "select exclusions (seed check)");
+    if (!existingExcl || existingExcl.length === 0) {
+      const { error: exErr } = await this.db.from("exclusions").insert({
+        user_id: userId,
+        exercise_id: SEED_EXCLUSION.exerciseId,
+        exercise_name: SEED_EXCLUSION.exerciseName,
+        reason: SEED_EXCLUSION.reason,
+      });
+      check(exErr, "seed insert exclusions");
+    }
+
+    // Re-read so we return the true persisted row (and confirm it exists).
+    const { data: seeded, error: reErr } = await this.db
+      .from("profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    check(reErr, "re-select profiles after seed");
+    if (!seeded) {
+      throw new Error(
+        `profiles row for ${userId} not found immediately after seed insert — check RLS / auth.users FK.`,
+      );
+    }
+    return this.rowToProfile(seeded, await this.fetchActiveLifts(userId));
   }
 
   async updateProfile(
     userId: string,
     patch: Partial<Omit<Profile, "id">>,
   ): Promise<Profile> {
-    await this.getProfile(userId); // ensure it exists
+    await this.getProfile(userId); // ensure it exists (throws on failure)
 
     // Active lifts live in their own table — sync it separately (PRD §6.6).
     if (patch.userActiveLifts !== undefined) {
-      await this.db.from("user_active_lifts").delete().eq("user_id", userId);
+      const { error: dErr } = await this.db
+        .from("user_active_lifts")
+        .delete()
+        .eq("user_id", userId);
+      check(dErr, "delete user_active_lifts");
       if (patch.userActiveLifts.length > 0) {
-        await this.db.from("user_active_lifts").insert(
+        const { error: iErr } = await this.db.from("user_active_lifts").insert(
           patch.userActiveLifts.map((exercise_id) => ({ user_id: userId, exercise_id })),
         );
+        check(iErr, "insert user_active_lifts");
       }
     }
 
@@ -215,18 +264,20 @@ export class SupabaseStore implements Repository {
     for (const [key, col] of map) {
       if (patch[key] !== undefined) row[col] = patch[key];
     }
-    await this.db.from("profiles").update(row).eq("user_id", userId);
+    const { error } = await this.db.from("profiles").update(row).eq("user_id", userId);
+    check(error, "update profiles");
     return this.getProfile(userId);
   }
 
   // Exclusions ---------------------------------------------------------------
   async listExclusions(userId: string): Promise<Exclusion[]> {
     await this.getProfile(userId);
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("exclusions")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: true });
+    check(error, "select exclusions");
     return (data ?? []).map(toExclusion);
   }
 
@@ -241,10 +292,14 @@ export class SupabaseStore implements Repository {
         e.exerciseName.toLowerCase() === input.exerciseName.toLowerCase(),
     );
     if (dup) {
-      await this.db.from("exclusions").update({ reason: input.reason }).eq("id", dup.id);
+      const { error } = await this.db
+        .from("exclusions")
+        .update({ reason: input.reason })
+        .eq("id", dup.id);
+      check(error, "update exclusion reason");
       return { ...dup, reason: input.reason };
     }
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("exclusions")
       .insert({
         user_id: userId,
@@ -254,20 +309,27 @@ export class SupabaseStore implements Repository {
       })
       .select("*")
       .single();
+    check(error, "insert exclusion");
     return toExclusion(data);
   }
 
   async removeExclusion(userId: string, id: string): Promise<void> {
-    await this.db.from("exclusions").delete().eq("user_id", userId).eq("id", id);
+    const { error } = await this.db
+      .from("exclusions")
+      .delete()
+      .eq("user_id", userId)
+      .eq("id", id);
+    check(error, "delete exclusion");
   }
 
   // Overrides ----------------------------------------------------------------
   async listOverrides(userId: string): Promise<LocationOverride[]> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("location_overrides")
       .select("*")
       .eq("user_id", userId)
       .order("starts_on", { ascending: false });
+    check(error, "select location_overrides");
     return (data ?? []).map(toOverride);
   }
 
@@ -275,7 +337,7 @@ export class SupabaseStore implements Repository {
     userId: string,
     dateISO: string,
   ): Promise<LocationOverride | null> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("location_overrides")
       .select("*")
       .eq("user_id", userId)
@@ -283,6 +345,7 @@ export class SupabaseStore implements Repository {
       .gte("expires_on", dateISO)
       .order("starts_on", { ascending: false })
       .limit(1);
+    check(error, "select active location_override");
     return data && data[0] ? toOverride(data[0]) : null;
   }
 
@@ -290,7 +353,7 @@ export class SupabaseStore implements Repository {
     userId: string,
     input: { context: string; startsOn: string; expiresOn: string },
   ): Promise<LocationOverride> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("location_overrides")
       .insert({
         user_id: userId,
@@ -300,16 +363,23 @@ export class SupabaseStore implements Repository {
       })
       .select("*")
       .single();
+    check(error, "insert location_override");
     return toOverride(data);
   }
 
   async removeOverride(userId: string, id: string): Promise<void> {
-    await this.db.from("location_overrides").delete().eq("user_id", userId).eq("id", id);
+    const { error } = await this.db
+      .from("location_overrides")
+      .delete()
+      .eq("user_id", userId)
+      .eq("id", id);
+    check(error, "delete location_override");
   }
 
   // Exercises (global catalog) -----------------------------------------------
   async listExercises(): Promise<Exercise[]> {
-    const { data } = await this.db.from("exercises").select("*");
+    const { data, error } = await this.db.from("exercises").select("*");
+    check(error, "select exercises");
     // Resilience: if the table hasn't been seeded yet, use the code seed so the
     // app still works before setup-supabase runs.
     if (!data || data.length === 0) return SEED_EXERCISES;
@@ -317,45 +387,53 @@ export class SupabaseStore implements Repository {
   }
 
   async getExercise(id: string): Promise<Exercise | null> {
-    const { data } = await this.db.from("exercises").select("*").eq("id", id).maybeSingle();
+    const { data, error } = await this.db
+      .from("exercises")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    check(error, "select exercise");
     if (data) return toExercise(data);
     return SEED_EXERCISES.find((e) => e.id === id) ?? null;
   }
 
   // Sessions -----------------------------------------------------------------
   async getSessionForDate(userId: string, dateISO: string): Promise<Session | null> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("sessions")
       .select("*")
       .eq("user_id", userId)
       .eq("date", dateISO)
       .maybeSingle();
+    check(error, "select session for date");
     return data ? toSession(data) : null;
   }
 
   async getSession(userId: string, id: string): Promise<Session | null> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("sessions")
       .select("*")
       .eq("user_id", userId)
       .eq("id", id)
       .maybeSingle();
+    check(error, "select session");
     return data ? toSession(data) : null;
   }
 
   async listRecentSessions(userId: string, limit: number): Promise<Session[]> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("sessions")
       .select("*")
       .eq("user_id", userId)
       .order("date", { ascending: false })
       .limit(limit);
+    check(error, "select recent sessions");
     return (data ?? []).map(toSession);
   }
 
   async saveSession(session: Session): Promise<Session> {
     // Upsert on the (user_id, date) unique constraint — one session per day.
-    await this.db.from("sessions").upsert(
+    const { error } = await this.db.from("sessions").upsert(
       {
         id: session.id,
         user_id: session.userId,
@@ -366,6 +444,7 @@ export class SupabaseStore implements Repository {
       },
       { onConflict: "user_id,date" },
     );
+    check(error, "upsert session");
     return (await this.getSessionForDate(session.userId, session.date)) ?? session;
   }
 
@@ -377,7 +456,12 @@ export class SupabaseStore implements Repository {
     const row: Record<string, unknown> = {};
     if (patch.program !== undefined) row.program = patch.program;
     if (patch.status !== undefined) row.status = patch.status;
-    await this.db.from("sessions").update(row).eq("user_id", userId).eq("id", id);
+    const { error } = await this.db
+      .from("sessions")
+      .update(row)
+      .eq("user_id", userId)
+      .eq("id", id);
+    check(error, "update session");
     const s = await this.getSession(userId, id);
     if (!s) throw new Error("Session not found");
     return s;
@@ -391,7 +475,8 @@ export class SupabaseStore implements Repository {
       .eq("user_id", userId)
       .order("logged_at", { ascending: true });
     if (exerciseId) q = q.eq("exercise_id", exerciseId);
-    const { data } = await q;
+    const { data, error } = await q;
+    check(error, "select logged_sets");
     return (data ?? []).map(toLoggedSet);
   }
 
@@ -399,7 +484,7 @@ export class SupabaseStore implements Repository {
     userId: string,
     input: Omit<LoggedSet, "id" | "userId" | "loggedAt"> & { loggedAt?: string },
   ): Promise<LoggedSet> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("logged_sets")
       .insert({
         id: randomUUID(),
@@ -415,25 +500,28 @@ export class SupabaseStore implements Repository {
       })
       .select("*")
       .single();
+    check(error, "insert logged_set");
     return toLoggedSet(data);
   }
 
   async clearOnboardingSets(userId: string): Promise<void> {
-    await this.db
+    const { error } = await this.db
       .from("logged_sets")
       .delete()
       .eq("user_id", userId)
       .eq("source", "onboarding");
+    check(error, "delete onboarding logged_sets");
   }
 
   async lastTimeFor(userId: string, exerciseId: string): Promise<LastTime | null> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("logged_sets")
       .select("*")
       .eq("user_id", userId)
       .eq("exercise_id", exerciseId)
       .order("logged_at", { ascending: false })
       .limit(20);
+    check(error, "select logged_sets for last-time");
     if (!data || data.length === 0) return null;
     const sets = data.map(toLoggedSet);
     const lastDate = sets[0].loggedAt.slice(0, 10);
@@ -446,7 +534,8 @@ export class SupabaseStore implements Repository {
   async listPRs(userId: string, opts?: { onlyCurrent?: boolean }): Promise<PR[]> {
     let q = this.db.from("prs").select("*").eq("user_id", userId);
     if (opts?.onlyCurrent) q = q.eq("superseded", false);
-    const { data } = await q.order("date_achieved", { ascending: false });
+    const { data, error } = await q.order("date_achieved", { ascending: false });
+    check(error, "select prs");
     return (data ?? []).map(toPR);
   }
 
@@ -455,7 +544,7 @@ export class SupabaseStore implements Repository {
     exerciseId: string,
     bucket: RepBucket,
   ): Promise<PR | null> {
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("prs")
       .select("*")
       .eq("user_id", userId)
@@ -463,6 +552,7 @@ export class SupabaseStore implements Repository {
       .eq("rep_bucket", bucket)
       .eq("superseded", false)
       .maybeSingle();
+    check(error, "select current PR");
     return data ? toPR(data) : null;
   }
 
@@ -476,9 +566,13 @@ export class SupabaseStore implements Repository {
       return { pr: current!, isNew: false };
     }
     if (current) {
-      await this.db.from("prs").update({ superseded: true }).eq("id", current.id);
+      const { error } = await this.db
+        .from("prs")
+        .update({ superseded: true })
+        .eq("id", current.id);
+      check(error, "supersede PR");
     }
-    const { data } = await this.db
+    const { data, error } = await this.db
       .from("prs")
       .insert({
         user_id: userId,
@@ -492,6 +586,7 @@ export class SupabaseStore implements Repository {
       })
       .select("*")
       .single();
+    check(error, "insert PR");
     return { pr: toPR(data), isNew: true };
   }
 }

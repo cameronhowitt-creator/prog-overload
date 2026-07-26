@@ -1,4 +1,5 @@
-import { getRepo, getUserId } from "@/lib/db";
+import { getRepo } from "@/lib/db";
+import { requireUserId } from "@/lib/auth";
 import { CATEGORY_LABEL, fmtShortDate } from "@/lib/domain/format";
 import { formatWeight, resolveUnits } from "@/lib/domain/units";
 import type { MovementCategory } from "@/lib/domain/types";
@@ -10,7 +11,7 @@ const ORDER: MovementCategory[] = ["primary", "secondary", "accessory", "core"];
 
 export default async function HistoryPage() {
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
 
   const [sets, prs, exercises, profile] = await Promise.all([
     repo.listLoggedSets(userId),

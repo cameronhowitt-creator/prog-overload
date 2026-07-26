@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getRepo, getUserId, todayISO } from "@/lib/db";
+import { getRepo, todayISO } from "@/lib/db";
+import { requireUserId } from "@/lib/auth";
 import ThemeToggle from "./ThemeToggle";
 import { displayWeightNumber, resolveUnits, weightUnit } from "@/lib/domain/units";
 import {
@@ -31,7 +32,7 @@ function addDays(iso: string, days: number): string {
 
 export default async function ProfilePage() {
   const repo = getRepo();
-  const userId = getUserId();
+  const userId = await requireUserId();
   const today = todayISO();
 
   const [profile, exclusions, overrides, activeOverride, exercises] =
