@@ -17,6 +17,8 @@ import { randomUUID } from "node:crypto";
 import type {
   Exclusion,
   Exercise,
+  Feedback,
+  FeedbackInput,
   LastTime,
   LocationOverride,
   LoggedSet,
@@ -124,6 +126,21 @@ const toPR = (r: any): PR => ({
   reps: r.reps,
   dateAchieved: r.date_achieved,
   superseded: r.superseded,
+});
+const toFeedback = (r: any): Feedback => ({
+  id: r.id,
+  userId: r.user_id,
+  category: r.category,
+  message: r.message,
+  rating: r.rating ?? null,
+  path: r.path ?? null,
+  appVersion: r.app_version ?? null,
+  userAgent: r.user_agent ?? null,
+  sessionId: r.session_id ?? null,
+  status: r.status,
+  githubIssueNumber: r.github_issue_number ?? null,
+  githubIssueUrl: r.github_issue_url ?? null,
+  createdAt: r.created_at,
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -773,5 +790,60 @@ export class SupabaseStore implements Repository {
       })),
     );
     check(iErr, "insert recomputed prs");
+  }
+
+  // Feedback -----------------------------------------------------------------
+  async listFeedback(userId: string): Promise<Feedback[]> {
+    const { data, error } = await this.db
+      .from("feedback")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+    check(error, "select feedback");
+    return (data ?? []).map(toFeedback);
+  }
+
+  async addFeedback(userId: string, input: FeedbackInput): Promise<Feedback> {
+    const { data, error } = await this.db
+      .from("feedback")
+      .insert({
+        user_id: userId,
+        category: input.category,
+        message: input.message,
+        rating: input.rating ?? null,
+        path: input.path,
+        app_version: input.appVersion,
+        user_agent: input.userAgent,
+        session_id: input.sessionId,
+      })
+      .select("*")
+      .single();
+    check(error, "insert feedback");
+    return toFeedback(data);
+  }
+
+  async updateFeedback(
+    userId: string,
+    id: string,
+    patch: Partial<
+      Pick<Feedback, "status" | "githubIssueNumber" | "githubIssueUrl">
+    >,
+  ): Promise<Feedback> {
+    const row: Record<string, unknown> = {};
+    if (patch.status !== undefined) row.status = patch.status;
+    if (patch.githubIssueNumber !== undefined)
+      row.github_issue_number = patch.githubIssueNumber;
+    if (patch.githubIssueUrl !== undefined)
+      row.github_issue_url = patch.githubIssueUrl;
+
+    const { data, error } = await this.db
+      .from("feedback")
+      .update(row)
+      .eq("id", id)
+      .eq("user_id", userId)
+      .select("*")
+      .single();
+    check(error, "update feedback");
+    return toFeedback(data);
   }
 }

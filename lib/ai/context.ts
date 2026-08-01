@@ -35,10 +35,14 @@ export async function buildGenerationContext(
     }),
   );
 
-  // Correctives programmed recently, so rotation avoids immediate repeats.
-  const recentCorrectiveIds = recentSessions
-    .flatMap((s) => s.program.lifts)
+  // Correctives and core work programmed recently, so both rotations avoid
+  // immediate repeats.
+  const recentLifts = recentSessions.flatMap((s) => s.program.lifts);
+  const recentCorrectiveIds = recentLifts
     .filter((l) => l.category === "mobility")
+    .map((l) => l.exerciseId);
+  const recentCoreIds = recentLifts
+    .filter((l) => l.category === "core")
     .map((l) => l.exerciseId);
 
   // How the last few sessions actually felt — newest first. A session after a
@@ -59,19 +63,21 @@ export async function buildGenerationContext(
     phase,
     history,
     recentCorrectiveIds,
+    recentCoreIds,
     plannedDay,
     recentFeedback,
   };
 }
 
-// Strength categories the user explicitly "trains" and selects in onboarding.
-// Core and mobility/corrective work is programmed supplementally and is NOT
-// gated by the active-lift list.
-const STRENGTH_CATEGORIES = new Set(["primary", "secondary", "accessory"]);
+// Onboarding asks only which MAIN lifts the user trains, so only "primary" is
+// gated by the active-lift list. Secondary, accessory, core and mobility work is
+// programmed supplementally around those choices — gating them too would filter
+// out everything the user was never asked about.
+const GATED_CATEGORIES = new Set(["primary"]);
 
 // Which library exercises are eligible: not excluded, equipment-compatible (if a
 // temporary override restricts equipment), and — once the user has onboarded — a
-// STRENGTH lift only if it's in their active-lift list. Empty active list means
+// PRIMARY lift only if it's in their active-lift list. Empty active list means
 // unrestricted (legacy / pre-onboarding). Free-text override is keyword-scanned
 // for equipment terms; bodyweight is always allowed (PRD §6.1, §6.5, onboarding).
 // Takes only the fields it actually needs, so the plan layer (which has no full
@@ -106,7 +112,7 @@ export function eligibleExercises(ctx: EligibilityContext) {
     }
     if (
       restrictToActive &&
-      STRENGTH_CATEGORIES.has(ex.category) &&
+      GATED_CATEGORIES.has(ex.category) &&
       !activeSet.has(ex.id)
     ) {
       return false;

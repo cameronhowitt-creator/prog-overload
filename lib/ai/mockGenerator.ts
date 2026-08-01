@@ -12,6 +12,7 @@ import type {
 import {
   DEFAULT_SESSION_MINUTES,
   estimateLiftMinutes,
+  isLoadable,
   liftingBudgetMinutes,
   repRangeFor,
   restDefaultsFor,
@@ -154,24 +155,25 @@ function prescribe(
   reps: { low: number; high: number },
 ): { weightTarget: number | null; rationale: string } {
   const last = ctx.history[ex.id]?.lastTime ?? null;
-  const isLoadable = ex.equipment !== "bodyweight";
 
-  if (!isLoadable) {
+  if (!isLoadable(ex.equipment)) {
     if (ex.category === "mobility") {
       return {
         weightTarget: null,
         rationale: `Corrective work — ${reps.low}–${reps.high} controlled reps per side, quality over load.`,
       };
     }
+    // Band/ab-wheel style work isn't "bodyweight" — don't call it that.
+    const noun = ex.equipment === "bodyweight" ? "bodyweight" : "no added load";
     if (last) {
       return {
         weightTarget: null,
-        rationale: `Last time: ${last.sets}×${last.reps} bodyweight. Aim to add a rep or two toward the top of the range.`,
+        rationale: `Last time: ${last.sets}×${last.reps} at ${noun}. Aim to add a rep or two toward the top of the range.`,
       };
     }
     return {
       weightTarget: null,
-      rationale: `Bodyweight — work in the ${reps.low}–${reps.high} rep range with clean form.`,
+      rationale: `Progress by reps — work in the ${reps.low}–${reps.high} range at ${noun} with clean form.`,
     };
   }
 
@@ -226,11 +228,16 @@ export class MockGenerator implements ProgramGenerator {
       if (pool.length === 0) continue;
 
       let chosen: Exercise;
-      if (slot.categories.includes("mobility")) {
-        // Correctives ROTATE: avoid ones programmed recently (PRD §6.2).
-        const fresh = pool.filter(
-          (ex) => !ctx.recentCorrectiveIds.includes(ex.id),
-        );
+      // Correctives and core work ROTATE: avoid ones programmed recently (PRD
+      // §6.2). Without this the core slot would pick the same exercise forever —
+      // every history-less candidate scores the same and ties break on name.
+      const rotates =
+        slot.categories.includes("mobility") || slot.categories.includes("core");
+      if (rotates) {
+        const recent = slot.categories.includes("mobility")
+          ? ctx.recentCorrectiveIds
+          : ctx.recentCoreIds;
+        const fresh = pool.filter((ex) => !recent.includes(ex.id));
         const rotationPool = fresh.length ? fresh : pool;
         chosen = rotationPool[dayIndex(ctx.date) % rotationPool.length];
       } else {

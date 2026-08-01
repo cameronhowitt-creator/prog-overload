@@ -14,11 +14,13 @@ export async function signOutAction() {
 import type {
   CreatineStatus,
   EquipmentAccess,
+  FeedbackCategory,
   Profile,
   UnitsPreference,
   Weekday,
 } from "@/lib/domain/types";
 import { resolveUnits, toCanonicalWeightKg } from "@/lib/domain/units";
+import { createFeedbackIssue } from "@/lib/feedback/github";
 
 // Change the units preference. Display/input only — never re-scales stored values
 // (weights stay canonical kg), so history reads the same numbers (PRD §6.6).
@@ -150,4 +152,74 @@ export async function removeOverrideAction(formData: FormData) {
   await repo.removeOverride((await requireUserId()), id);
   revalidatePath("/profile");
   revalidatePath("/today");
+}
+
+// Product feedback from the Profile tab. Takes a typed object rather than
+// FormData (like setTrainingDaysAction) because it's called from a client sheet
+// that needs the result back to show an inline error instead of a blank failure.
+const FEEDBACK_CATEGORIES: FeedbackCategory[] = [
+  "bug",
+  "idea",
+  "exercise-request",
+  "other",
+];
+
+export async function submitFeedbackAction(input: {
+  category: string;
+  message: string;
+  rating?: number;
+  path?: string;
+  userAgent?: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const message = String(input.message ?? "").trim();
+  if (message.length < 4) return { ok: false, error: "Add a little more detail." };
+  if (message.length > 4000)
+    return { ok: false, error: "That's too long — trim it to 4000 characters." };
+
+  // Never fail a submit over a bad category or rating; drop to a safe value.
+  const category = (FEEDBACK_CATEGORIES as string[]).includes(input.category)
+    ? (input.category as FeedbackCategory)
+    : "other";
+  const r = Number(input.rating);
+  const rating = Number.isFinite(r) && r >= 1 && r <= 5 ? Math.round(r) : null;
+
+  let feedback;
+  try {
+    const repo = getRepo();
+    const userId = await requireUserId();
+    // Attach the workout that was open, if any — bug reports about "today"
+    // are far easier to reproduce with the session in hand.
+    const session = await repo.getSessionForDate(userId, todayISO());
+    feedback = await repo.addFeedback(userId, {
+      category,
+      message,
+      rating,
+      path: input.path?.slice(0, 200) ?? null,
+      appVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? null,
+      userAgent: input.userAgent?.slice(0, 400) ?? null,
+      sessionId: session?.id ?? null,
+    });
+  } catch (err) {
+    console.error("Failed to save feedback:", err);
+    return { ok: false, error: "Couldn't save that — try again." };
+  }
+
+  // Best-effort mirroring to GitHub, strictly after the durable write. Isolated
+  // so a GitHub outage can't lose feedback that's already stored.
+  try {
+    const repo = getRepo();
+    const userId = await requireUserId();
+    const issue = await createFeedbackIssue(feedback);
+    if (issue) {
+      await repo.updateFeedback(userId, feedback.id, {
+        githubIssueNumber: issue.number,
+        githubIssueUrl: issue.url,
+      });
+    }
+  } catch (err) {
+    console.warn("Feedback saved, but GitHub issue linking failed:", err);
+  }
+
+  revalidatePath("/profile");
+  return { ok: true };
 }

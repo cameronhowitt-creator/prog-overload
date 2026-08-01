@@ -7,6 +7,8 @@
 import type {
   Exclusion,
   Exercise,
+  Feedback,
+  FeedbackInput,
   LastTime,
   LocationOverride,
   LoggedSet,
@@ -111,4 +113,20 @@ export interface Repository {
   // Required after an edit or delete: lowering a PR-setting set must demote the
   // PR, which the incremental considerSetForPR path can't do.
   recomputePRsFor(userId: string, exerciseId: string): Promise<void>;
+
+  // Product feedback (Profile -> Send feedback) ------------------------------
+  // User-scoped like everything else. Cross-user triage is deliberately NOT on
+  // this interface: scripts/export-feedback.mts reads Supabase directly with the
+  // service-role key, exactly as scripts/seed-supabase.mts does.
+  listFeedback(userId: string): Promise<Feedback[]>;
+  addFeedback(userId: string, input: FeedbackInput): Promise<Feedback>;
+  // Write-back for triage state and the GitHub issue link, which is only known
+  // after the row exists.
+  updateFeedback(
+    userId: string,
+    id: string,
+    patch: Partial<
+      Pick<Feedback, "status" | "githubIssueNumber" | "githubIssueUrl">
+    >,
+  ): Promise<Feedback>;
 }

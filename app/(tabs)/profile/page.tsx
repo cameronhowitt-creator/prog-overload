@@ -4,6 +4,7 @@ import { requireUserId } from "@/lib/auth";
 import ThemeToggle from "./ThemeToggle";
 import ProgressSection from "./ProgressSection";
 import TrainingDaysField from "./TrainingDaysField";
+import FeedbackSheet from "./FeedbackSheet";
 import { displayWeightNumber, resolveUnits, weightUnit } from "@/lib/domain/units";
 import {
   addExclusionAction,
@@ -84,6 +85,11 @@ export default async function ProfilePage() {
             No active lifts set — all lifts are eligible.
           </div>
         )}
+        <div className="lift-tag" style={{ marginTop: 8 }}>
+          Accessories, core and mobility are programmed around these. New main
+          lifts get added to the library over time — check back in here to pick
+          any up.
+        </div>
         <Link href="/onboarding" className="btn-ghost" style={{ display: "block", textAlign: "center", marginTop: 14 }}>
           Update my lifts / starting point
         </Link>
@@ -312,6 +318,11 @@ export default async function ProfilePage() {
           </button>
         </div>
       </form>
+
+      {/* Feedback — bugs, ideas, exercise requests. Captures route/build/session
+          context automatically so a report is actionable on its own. */}
+      <div className="section-label">Feedback</div>
+      <FeedbackSheet />
 
       {/* Account -----------------------------------------------------------*/}
       <div className="section-label">Account</div>

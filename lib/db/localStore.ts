@@ -9,6 +9,8 @@ import { randomUUID } from "node:crypto";
 import type {
   Exclusion,
   Exercise,
+  Feedback,
+  FeedbackInput,
   LastTime,
   LocationOverride,
   LoggedSet,
@@ -32,6 +34,7 @@ interface DBShape {
   loggedSets: LoggedSet[];
   prs: PR[];
   plans: TrainingPlan[];
+  feedback: Feedback[];
   seededUsers: string[];
 }
 
@@ -48,6 +51,7 @@ function emptyDB(): DBShape {
     loggedSets: [],
     prs: [],
     plans: [],
+    feedback: [],
     seededUsers: [],
   };
 }
@@ -67,6 +71,7 @@ async function load(): Promise<DBShape> {
     parsed.exercises = SEED_EXERCISES;
     // Collections added after a store file was first written.
     parsed.plans ??= [];
+    parsed.feedback ??= [];
     return parsed;
   } catch {
     return emptyDB();
@@ -491,6 +496,51 @@ export class LocalStore implements Repository {
         (p) => !(p.userId === userId && p.exerciseId === exerciseId),
       );
       db.prs.push(...replayPRs(userId, exerciseId, sets));
+    });
+  }
+
+  // Feedback -----------------------------------------------------------------
+  async listFeedback(userId: string): Promise<Feedback[]> {
+    const db = await load();
+    return db.feedback
+      .filter((f) => f.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async addFeedback(userId: string, input: FeedbackInput): Promise<Feedback> {
+    return mutate((db) => {
+      const row: Feedback = {
+        id: randomUUID(),
+        userId,
+        category: input.category,
+        message: input.message,
+        rating: input.rating ?? null,
+        path: input.path,
+        appVersion: input.appVersion,
+        userAgent: input.userAgent,
+        sessionId: input.sessionId,
+        status: "new",
+        githubIssueNumber: null,
+        githubIssueUrl: null,
+        createdAt: new Date().toISOString(),
+      };
+      db.feedback.push(row);
+      return row;
+    });
+  }
+
+  async updateFeedback(
+    userId: string,
+    id: string,
+    patch: Partial<
+      Pick<Feedback, "status" | "githubIssueNumber" | "githubIssueUrl">
+    >,
+  ): Promise<Feedback> {
+    return mutate((db) => {
+      const row = db.feedback.find((f) => f.userId === userId && f.id === id);
+      if (!row) throw new Error("Feedback not found");
+      Object.assign(row, patch);
+      return row;
     });
   }
 }

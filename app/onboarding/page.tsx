@@ -5,11 +5,14 @@ import OnboardingFlow, { type OnboardingLift } from "./OnboardingFlow";
 
 export const dynamic = "force-dynamic";
 
-// Strength categories the user picks from — core/mobility are programmed for them.
+// Only the main compound lifts are picked here. Secondary, accessory, core and
+// mobility work is programmed AROUND those choices rather than enumerated by the
+// user — which keeps this step short as the library grows, and keeps the baseline
+// step (which iterates the selection) to the lifts worth having a starting point
+// for. The eligibility gate in lib/ai/context.ts matches: only "primary" is
+// restricted to this list.
 const GROUPS: { category: MovementCategory; label: string }[] = [
-  { category: "primary", label: "Primary / compound" },
-  { category: "secondary", label: "Secondary compound" },
-  { category: "accessory", label: "Accessory / isolation" },
+  { category: "primary", label: "Your main lifts" },
 ];
 
 export default async function OnboardingPage() {

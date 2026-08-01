@@ -48,7 +48,7 @@ as the fallback.
 ### Enable Supabase (production / multi-user)
 
 1. Apply the schema: paste each file in `supabase/migrations/` into the Supabase SQL
-   editor in order, `0001` through `0004` (creates the user-scoped tables + RLS).
+   editor in order, `0001` through `0005` (creates the user-scoped tables + RLS).
 2. Seed the exercise catalog: `npm run seed:supabase`.
 3. Set `DATA_BACKEND=supabase` in `.env.local` (and the `NEXT_PUBLIC_SUPABASE_URL` /
    `SUPABASE_SERVICE_ROLE_KEY` values).
@@ -56,10 +56,29 @@ as the fallback.
 Auth is single-user in dev (`DEV_USER_ID`); wiring Supabase Auth flips on real
 per-user scoping without a schema change (§5, §8).
 
+### Feedback
+
+Profile → **Send feedback** writes to the `feedback` table (or the `feedback` array
+in the local store), capturing the route, app version, user agent and the open
+session automatically. To triage:
+
+```bash
+npm run export:feedback                          # markdown, all rows, to stdout
+npm run export:feedback -- --status=new          # only untriaged
+npm run export:feedback -- --format=csv > f.csv
+```
+
+Optionally set `GITHUB_FEEDBACK_REPO` and `GITHUB_TOKEN` in `.env.local` to mirror
+each submission into a GitHub issue. Both are optional and failure-tolerant: with
+them unset nothing happens, and if the API call fails the feedback is still saved.
+The labels `feedback` and `feedback:<category>` must already exist in the repo.
+
 ## Project map
 
 ```
-app/(auth)            Email/password sign-in + sign-up (Supabase)
+app/(auth)            Sign-in · sign-up · forgot-password · update-password (Supabase)
+app/auth/confirm      Route handler consuming emailed auth links (verifyOtp)
+app/auth/error        Expired / invalid auth link landing page
 app/onboarding        12-step first-run flow (incremental save)
 app/(tabs)/log        Today's logged sets + earlier sessions · edit/delete a set
 app/(tabs)/today      Generate session · live logging · swap · skip · finish workout
@@ -89,6 +108,41 @@ used, so the app runs with zero Supabase setup — the mock branch is gated on
 `isSupabaseBackend()` and never touches the Supabase store. `lib/auth` exposes
 `getUser` / `getSession` / `signOut`; `lib/supabase/{client,server,middleware}.ts`
 hold the SSR clients.
+
+**Password reset + email confirmation.** `/forgot-password` sends a reset link via
+`resetPasswordForEmail`; `/auth/confirm` (the app's only route handler) verifies the
+emailed link with `verifyOtp({ token_hash })` and forwards recovery links to
+`/update-password`, everything else to `/today`. Failures land on `/auth/error`.
+
+`verifyOtp` is used rather than `exchangeCodeForSession` on purpose: the browser
+client defaults to PKCE, whose code verifier lives in the originating browser, so a
+link opened on a *different* device (the normal case for a reset email) could never
+complete that exchange. The token hash is self-contained, so the same handler works
+cross-device and serves sign-up confirmation too.
+
+Middleware gating is driven by three named sets in `lib/supabase/middleware.ts`:
+`PUBLIC_PATHS` (no session needed — includes `/auth/confirm`, which is
+unauthenticated by definition), `SIGNED_IN_REDIRECT` (bounce signed-in users to
+`/today`), and `ONBOARDING_EXEMPT`. `/update-password` is in `ONBOARDING_EXEMPT`
+only — a user resetting a password may never have onboarded, and bouncing them to
+`/onboarding` would abandon the recovery session before the password is changed.
+
+⚠️ **Requires manual Supabase dashboard config** (not in version control — if the
+templates are ever reset to defaults, both flows break silently with no code change):
+
+- **Authentication → URL Configuration:** set Site URL; add `http://localhost:3000/**`
+  and the production origin to Redirect URLs.
+- **Emails → Templates → Confirm signup:**
+  `<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email">Confirm your email</a>`
+- **Emails → Templates → Reset password:**
+  `<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/update-password">Reset password</a>`
+- The stock templates use `{{ .ConfirmationURL }}`, which does **not** work with this
+  handler — `{{ .TokenHash }}` is what makes it possible. To serve localhost and
+  production from one project, use `{{ .RedirectTo }}` instead of `{{ .SiteURL }}` and
+  allowlist every origin.
+- **Providers → Email → "Secure password change" must be OFF**, or
+  `updateUser({ password })` demands a reauthentication nonce and the reset fails.
+- Keep **"Confirm email" ON**, or sign-up auto-confirms and that half never runs.
 
 **Onboarding.** A fresh user is routed through a 12-step flow (`app/onboarding`):
 welcome → **units (imperial/metric, no default)** → basic info → goals/experience →
@@ -121,7 +175,11 @@ needs your project to apply + verify:
    then `0004_plans_feedback_days.sql` in the Supabase SQL editor.
    **All four are already applied to the live project — do not re-run them.** They are
    written to be idempotent (`if not exists`) but re-running is still unnecessary.
-2. `npm run seed:supabase` to seed the exercise catalog.
+   `0005_feedback.sql` is **not yet applied** — it adds the product-feedback table.
+2. `npm run seed:supabase` to seed the exercise catalog. Re-run it after any edit to
+   `lib/seed/exercises.ts`; it upserts by id, so new exercises are a pure insert and
+   existing rows are untouched. (The local store needs nothing — it refreshes the
+   library from the code seed on every read.)
 3. Set `DATA_BACKEND=supabase` in `.env.local`. Until this flips, the `training_plans`
    table and the new `sessions` feedback columns exist but go unused.
 4. Verify RLS with Supabase's `get_advisors` (security) — the policies scope every

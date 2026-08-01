@@ -395,8 +395,8 @@ export default function OnboardingFlow({
         {/* LIFT SELECTION (2a) */}
         {step === "select" && (
           <StepShell
-            title="Which lifts do you train?"
-            lead="Pick the lifts you currently do — these become your working set. We program core and mobility around them."
+            title="Which main lifts do you train?"
+            lead="Pick the big compound lifts you actually do. Everything else — accessories, core and mobility — gets programmed around them."
             onBack={back}
             onNext={next}
             pending={pending}

@@ -35,6 +35,9 @@ export interface GenerationContext {
   history: Record<string, ExerciseHistory>;
   // Correctives seen in recent sessions, so the rotation avoids repeats (PRD §6.2).
   recentCorrectiveIds: string[];
+  // Same idea for core work: with a flat candidate score and a name tiebreak, the
+  // single core slot would otherwise program the same exercise indefinitely.
+  recentCoreIds: string[];
   // The day in the active 4-week plan this session materializes, when there is
   // one. Constrains focus/emphasis/intensity so the block holds together.
   plannedDay?: PlannedDay | null;

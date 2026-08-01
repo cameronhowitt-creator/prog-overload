@@ -48,9 +48,11 @@ export default async function TodayPage() {
   }
 
   // Eligible library for the swap picker: exclusions + active-override equipment
-  // filtered, and — once onboarded — strength swaps limited to the active-lift
-  // list (core/mobility always available), matching generation (PRD §6.5, onboarding).
-  const STRENGTH = new Set(["primary", "secondary", "accessory"]);
+  // filtered, and — once onboarded — PRIMARY swaps limited to the active-lift list
+  // (everything else is always available). Must stay in step with GATED_CATEGORIES
+  // in lib/ai/context.ts or the picker will offer what generation won't program
+  // (PRD §6.5, onboarding).
+  const GATED = new Set(["primary"]);
   let swapLibrary: SwapExercise[] = [];
   if (session) {
     const [exercises, exclusions, activeOverride] = await Promise.all([
@@ -71,7 +73,7 @@ export default async function TodayPage() {
         if (excludedNames.has(ex.name.toLowerCase())) return false;
         if (allowed && ex.equipment !== "bodyweight" && !allowed.has(ex.equipment))
           return false;
-        if (restrictToActive && STRENGTH.has(ex.category) && !active.has(ex.id))
+        if (restrictToActive && GATED.has(ex.category) && !active.has(ex.id))
           return false;
         return true;
       })

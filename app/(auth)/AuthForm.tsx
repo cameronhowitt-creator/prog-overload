@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getSiteOrigin } from "@/lib/auth/site-url";
 
 // Shared email/password form for sign-in and sign-up (PRD §1).
 export default function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
@@ -23,7 +24,13 @@ export default function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
     startTransition(async () => {
       const supabase = createSupabaseBrowserClient();
       const { error } = isSignUp
-        ? await supabase.auth.signUp({ email, password })
+        ? await supabase.auth.signUp({
+            email,
+            password,
+            // Routes the confirmation link through /auth/confirm. Nothing consumed
+            // that link before, so confirmed accounts never actually landed in the app.
+            options: { emailRedirectTo: `${getSiteOrigin()}/auth/confirm` },
+          })
         : await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setError(error.message);
@@ -77,6 +84,13 @@ export default function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
+            {!isSignUp && (
+              <p className="ob-lead" style={{ marginTop: -8, marginBottom: 16 }}>
+                <Link className="text-link" href="/forgot-password">
+                  Forgot password?
+                </Link>
+              </p>
+            )}
             {error && <p className="field" style={{ color: "var(--danger)", fontSize: 14 }}>{error}</p>}
             {notice && <p className="field" style={{ color: "var(--success)", fontSize: 14 }}>{notice}</p>}
             <div className="field">

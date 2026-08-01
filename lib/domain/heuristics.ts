@@ -2,7 +2,16 @@
 // stated rest mental model (PRD §7 / §11.1 — NOT the shorter logged Trainerize values).
 // Kept here in one place rather than scattered through prompts (plan "Reuse Notes").
 
-import type { MovementCategory, RepBucket, TrainingPhase } from "./types";
+import type { Equipment, MovementCategory, RepBucket, TrainingPhase } from "./types";
+
+// Equipment that carries no external load to progress, so prescriptions must not
+// name a weight target. "bands" belongs here alongside bodyweight: it also covers
+// the small unloaded kit with no other Equipment tag (ab wheel, sliders).
+export const NON_LOADABLE_EQUIPMENT = new Set<Equipment>(["bodyweight", "bands"]);
+
+export function isLoadable(equipment: Equipment): boolean {
+  return !NON_LOADABLE_EQUIPMENT.has(equipment);
+}
 
 // Rep-phase heuristic (PRD §7): classify by the top of the prescribed rep range.
 export function phaseForMaxReps(maxReps: number): TrainingPhase {

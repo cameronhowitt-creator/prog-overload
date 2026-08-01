@@ -34,7 +34,9 @@ const TEMPLATES: Template[] = [
   { focus: "Posterior chain — hinge emphasis", emphasis: ["hamstrings", "glutes", "back"], pattern: "hinge" },
   { focus: "Upper body — vertical push/pull", emphasis: ["shoulders", "back"], pattern: "v-pull" },
   { focus: "Full body — power & carries", emphasis: ["quads", "back", "shoulders"], pattern: "full" },
-  { focus: "Arms, core & conditioning", emphasis: ["biceps", "triceps", "abs"], pattern: "h-pull" },
+  // "core" (not "abs") — the emphasis strings must match Exercise.muscleGroups
+  // literally or they contribute nothing to candidate scoring.
+  { focus: "Arms, core & conditioning", emphasis: ["biceps", "triceps", "core"], pattern: "h-pull" },
 ];
 
 const INTENSITY_CYCLE: PlanIntensity[] = ["hard", "moderate", "moderate", "light"];

@@ -144,6 +144,7 @@ function buildPrompt(ctx: GenerationContext): string {
     `Rules:`,
     `- Structure: 1 primary compound -> 2-3 secondary compounds/accessories -> 1-2 accessory/isolation -> 1 core -> 1 corrective (mobility).`,
     `- Keep designated core lifts (isCoreLift) stable across sessions for trackable progression; ROTATE the corrective so it isn't the same one repeatedly. Recently used correctives to avoid: ${JSON.stringify(ctx.recentCorrectiveIds)}.`,
+    `- ROTATE the core exercise too — the library has plenty. Recently used core work to avoid: ${JSON.stringify(ctx.recentCoreIds)}.`,
     `- Rest is implied by category (compound ${restCompound.low}-${restCompound.high}s, isolation ${restIso.low}-${restIso.high}s) — you do not set rest.`,
     `- For every lift WITH history, the rationale MUST reference the actual last set (weight x reps) and justify the target. Progress conservatively. Onboarding-sourced history counts the same as live logs.`,
     `- For a lift with NO history, set weightTarget null and say it's the first logged session.`,

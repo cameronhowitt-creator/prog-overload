@@ -238,6 +238,43 @@ export interface Session {
 }
 
 // ---------------------------------------------------------------------------
+// Product feedback
+//
+// Distinct from SessionFeedback above: that is feedback about a WORKOUT, this is
+// feedback about the APP — bugs, ideas, exercises the user wants added. Entry
+// point is Profile -> Send feedback. App context (route, build, session) is
+// captured automatically so triage never needs a follow-up question.
+// ---------------------------------------------------------------------------
+
+export type FeedbackCategory = "bug" | "idea" | "exercise-request" | "other";
+export type FeedbackStatus = "new" | "triaged" | "done";
+
+export interface Feedback {
+  id: string;
+  userId: string;
+  category: FeedbackCategory;
+  message: string;
+  rating?: number | null; // optional 1–5 "how's the app so far"
+  path: string | null; // route it was sent from
+  appVersion: string | null; // NEXT_PUBLIC_APP_VERSION at submit time
+  userAgent: string | null;
+  sessionId: string | null; // today's session, if one existed
+  status: FeedbackStatus;
+  // Filled in after the row is written, and left null when the optional GitHub
+  // integration is unconfigured or its API call failed.
+  githubIssueNumber: number | null;
+  githubIssueUrl: string | null;
+  createdAt: string; // ISO
+}
+
+// What submit accepts: everything the caller can legitimately supply. Identity,
+// triage state and the issue link are all assigned by the store or afterwards.
+export type FeedbackInput = Omit<
+  Feedback,
+  "id" | "userId" | "status" | "githubIssueNumber" | "githubIssueUrl" | "createdAt"
+>;
+
+// ---------------------------------------------------------------------------
 // Multi-week training plan
 //
 // A plan is an OUTLINE, not a set of full prescriptions: each planned day carries

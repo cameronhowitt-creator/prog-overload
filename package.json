@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "seed:supabase": "tsx scripts/seed-supabase.mts"
+    "seed:supabase": "tsx scripts/seed-supabase.mts",
+    "export:feedback": "tsx scripts/export-feedback.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",

@@ -5,6 +5,7 @@ import type { Repository } from "../db/repo";
 import type { Exercise, ProgramLift, PRReference } from "../domain/types";
 import {
   estimateLiftMinutes,
+  isLoadable,
   repBucketFor,
   restDefaultsFor,
 } from "../domain/heuristics";
@@ -51,11 +52,11 @@ export async function buildSwapLift(
       }
     : null;
 
-  const isLoadable = exercise.equipment !== "bodyweight";
   let weightTarget: number | null = null;
   let rationale: string;
-  if (!isLoadable) {
-    rationale = `Swapped in — bodyweight, ${template.repLow}–${template.repHigh} clean reps.`;
+  if (!isLoadable(exercise.equipment)) {
+    const noun = exercise.equipment === "bodyweight" ? "bodyweight" : "no added load";
+    rationale = `Swapped in — ${noun}, ${template.repLow}–${template.repHigh} clean reps.`;
   } else if (lastTime) {
     // last-time is canonical kg; step up by a clean unit-appropriate increment.
     weightTarget = nextTargetKg(lastTime.weight, units);
