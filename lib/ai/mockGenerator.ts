@@ -3,8 +3,19 @@
 // set, corrective rotation) so the app is fully functional without Claude, and so
 // the live generator has a correct reference implementation to match (PRD §6.2, §7).
 
-import type { Exercise } from "../domain/types";
-import { DEFAULT_SESSION_MINUTES, repRangeFor } from "../domain/heuristics";
+import type {
+  Exercise,
+  MovementCategory,
+  PlanIntensity,
+  PlannedDay,
+} from "../domain/types";
+import {
+  DEFAULT_SESSION_MINUTES,
+  estimateLiftMinutes,
+  liftingBudgetMinutes,
+  repRangeFor,
+  restDefaultsFor,
+} from "../domain/heuristics";
 import { formatWeight, nextTargetKg, resolveUnits } from "../domain/units";
 import { eligibleExercises } from "./context";
 import type {
@@ -58,6 +69,36 @@ const FOCUSES: { name: string; slots: Slot[] }[] = [
     ],
   },
 ];
+
+// Build slots that drive a planned day's emphasis, so the deterministic generator
+// respects the block instead of rotating through its own split. Structure matches
+// the FOCUSES templates: primary -> two secondaries -> optional accessory -> core
+// -> corrective.
+function focusForPlannedDay(day: PlannedDay): { name: string; slots: Slot[] } {
+  const groups = day.emphasis.length ? day.emphasis : undefined;
+  return {
+    name: day.focus,
+    slots: [
+      { categories: ["primary"], muscleGroups: groups, preferCore: true },
+      { categories: ["secondary"], muscleGroups: groups },
+      { categories: ["secondary", "accessory"], muscleGroups: groups },
+      { categories: ["accessory"], muscleGroups: groups, optional: true },
+      { categories: ["core"] },
+      { categories: ["mobility"] },
+    ],
+  };
+}
+
+// A light day sheds a set per lift; a hard day earns one on the primary.
+function intensityAdjustedSets(
+  base: number,
+  category: Exercise["category"],
+  intensity: PlanIntensity | undefined,
+): number {
+  if (intensity === "light") return Math.max(2, base - 1);
+  if (intensity === "hard" && category === "primary") return base + 1;
+  return base;
+}
 
 function dayIndex(dateISO: string): number {
   const [y, m, d] = dateISO.split("-").map(Number);
@@ -158,7 +199,11 @@ export class MockGenerator implements ProgramGenerator {
 
   async generate(ctx: GenerationContext): Promise<GeneratorResult> {
     const eligible = eligibleExercises(ctx);
-    const focus = FOCUSES[dayIndex(ctx.date) % FOCUSES.length];
+    // A planned day dictates what this session covers; without one, fall back to
+    // the date-rotated split.
+    const focus = ctx.plannedDay
+      ? focusForPlannedDay(ctx.plannedDay)
+      : FOCUSES[dayIndex(ctx.date) % FOCUSES.length];
     const phaseRange = repRangeFor(ctx.phase);
 
     const usedIds = new Set<string>();
@@ -200,7 +245,11 @@ export class MockGenerator implements ProgramGenerator {
       const { weightTarget, rationale } = prescribe(chosen, ctx, reps);
       selections.push({
         exerciseId: chosen.id,
-        sets: setsFor(chosen.category),
+        sets: intensityAdjustedSets(
+          setsFor(chosen.category),
+          chosen.category,
+          ctx.plannedDay?.intensity,
+        ),
         repLow: reps.low,
         repHigh: reps.high,
         weightTarget,
@@ -208,40 +257,59 @@ export class MockGenerator implements ProgramGenerator {
       });
     }
 
-    trimToTarget(selections, ctx, focus.slots);
+    const categoryById = new Map(eligible.map((e) => [e.id, e.category]));
+    trimToTarget(selections, ctx, focus.slots, (id) => categoryById.get(id));
 
-    const overrideNote = ctx.activeOverride
+    const contextNote = ctx.activeOverride
       ? `Adjusted for: ${ctx.activeOverride.context}`
-      : null;
+      : ctx.plannedDay
+        ? `${ctx.plannedDay.focus} · ${ctx.plannedDay.intensity} day`
+        : null;
 
     return {
       phase: ctx.phase,
       selections,
-      contextNote: overrideNote,
+      contextNote,
     };
   }
 }
 
-// Drop optional slots (from the end) until the estimate fits the session window.
+// Drop optional slots (from the end) until the estimate fits the lifting budget —
+// the session length MINUS the warm-up and the 10-min real-world buffer, not the
+// raw session length. Uses the same estimateLiftMinutes that assembleProgram and
+// the displayed per-lift minutes use, so both generators size sessions alike.
 function trimToTarget(
   selections: LiftSelection[],
   ctx: GenerationContext,
   slots: Slot[],
+  categoryOf: (exerciseId: string) => MovementCategory | undefined,
 ) {
-  const optionalExerciseIndexes = new Set<number>();
-  // Map selections back to slots by order to find which were optional.
-  slots.forEach((slot, i) => {
-    if (slot.optional && selections[i]) optionalExerciseIndexes.add(i);
-  });
-  // Rough estimate: warm-up + ~ (sets * 1.5 min) per lift.
-  const target = ctx.profile.sessionDurationMinutes ?? DEFAULT_SESSION_MINUTES;
-  const estimate = () =>
-    8 + selections.reduce((sum, s) => sum + s.sets * 1.5, 0);
-
-  // Remove optional lifts from the end while over target.
-  for (let i = selections.length - 1; i >= 0 && estimate() > target; i--) {
-    if (optionalExerciseIndexes.has(i)) {
-      selections.splice(i, 1);
+  // Map each selection back to the slot it filled. Slots with no eligible
+  // candidate are skipped entirely, so index-to-index alignment is not safe —
+  // walk both in order instead.
+  const optional = new Set<string>();
+  let si = 0;
+  for (const slot of slots) {
+    const sel = selections[si];
+    if (!sel) break;
+    const cat = categoryOf(sel.exerciseId);
+    if (cat && slot.categories.includes(cat)) {
+      if (slot.optional) optional.add(sel.exerciseId);
+      si++;
     }
+  }
+
+  const budget = liftingBudgetMinutes(
+    ctx.profile.sessionDurationMinutes ?? DEFAULT_SESSION_MINUTES,
+  );
+  const estimate = () =>
+    selections.reduce((sum, s) => {
+      const cat = categoryOf(s.exerciseId);
+      const rest = restDefaultsFor(cat ?? "accessory");
+      return sum + estimateLiftMinutes(s.sets, rest.high);
+    }, 0);
+
+  for (let i = selections.length - 1; i >= 0 && estimate() > budget; i--) {
+    if (optional.has(selections[i].exerciseId)) selections.splice(i, 1);
   }
 }

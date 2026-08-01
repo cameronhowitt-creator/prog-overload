@@ -3,9 +3,11 @@
 // numbers Emma sees mid-set are always real, never model-hallucinated (PRD §6.2, §12).
 
 import {
+  DEFAULT_BUFFER_MINUTES,
   DEFAULT_SESSION_MINUTES,
   DEFAULT_WARMUP_MINUTES,
   estimateLiftMinutes,
+  liftingBudgetMinutes,
   repBucketFor,
   restDefaultsFor,
 } from "../domain/heuristics";
@@ -62,15 +64,53 @@ export function assembleProgram(
     });
   }
 
+  const targetMinutes =
+    ctx.profile.sessionDurationMinutes ?? DEFAULT_SESSION_MINUTES;
+
+  // Enforce the time budget for EVERY generator. The live model is told the
+  // budget in the prompt but nothing made it obey; this is the backstop.
+  trimToBudget(lifts, liftingBudgetMinutes(targetMinutes));
+
   const liftMinutes = lifts.reduce((sum, l) => sum + l.estimatedMinutes, 0);
   const warmupMinutes = DEFAULT_WARMUP_MINUTES;
 
   return {
     phase: result.phase,
     warmupMinutes,
-    targetMinutes: ctx.profile.sessionDurationMinutes ?? DEFAULT_SESSION_MINUTES,
+    targetMinutes,
+    bufferMinutes: DEFAULT_BUFFER_MINUTES,
     estimatedMinutes: warmupMinutes + liftMinutes,
     lifts,
     contextNote: result.contextNote,
   };
+}
+
+// Cut the session down until it fits the lifting budget, the way a coach would:
+// first drop the most expendable whole lifts, then shave sets off what's left.
+// The primary compound, the core lift and the corrective are never dropped —
+// they're the session's point — but they can lose a set. Mutates in place.
+function trimToBudget(lifts: ProgramLift[], budgetMinutes: number): void {
+  const total = () => lifts.reduce((sum, l) => sum + l.estimatedMinutes, 0);
+
+  // 1. Drop accessories from the end, then secondaries.
+  for (const category of ["accessory", "secondary"] as const) {
+    for (let i = lifts.length - 1; i >= 0 && total() > budgetMinutes; i--) {
+      if (lifts[i].category === category) lifts.splice(i, 1);
+    }
+  }
+
+  // 2. Still over — shave sets off the longest lift each pass, down to a floor of
+  // 2 working sets. Correctives are already minimal, so they're left alone.
+  const MIN_SETS = 2;
+  while (total() > budgetMinutes) {
+    const candidates = lifts.filter(
+      (l) => l.category !== "mobility" && l.sets > MIN_SETS,
+    );
+    if (candidates.length === 0) break; // genuinely irreducible — ship it
+    const worst = candidates.reduce((a, b) =>
+      b.estimatedMinutes > a.estimatedMinutes ? b : a,
+    );
+    worst.sets -= 1;
+    worst.estimatedMinutes = estimateLiftMinutes(worst.sets, worst.restSecondsHigh);
+  }
 }

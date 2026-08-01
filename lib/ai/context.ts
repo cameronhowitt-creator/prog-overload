@@ -3,7 +3,7 @@
 // recycling chat memory (PRD §2, §8).
 
 import type { Repository } from "../db/repo";
-import type { TrainingPhase } from "../domain/types";
+import type { PlannedDay, TrainingPhase } from "../domain/types";
 import type { ExerciseHistory, GenerationContext } from "./types";
 
 export async function buildGenerationContext(
@@ -11,6 +11,7 @@ export async function buildGenerationContext(
   userId: string,
   date: string,
   phase: TrainingPhase = "hypertrophy",
+  plannedDay: PlannedDay | null = null,
 ): Promise<GenerationContext> {
   const [profile, exclusions, activeOverride, library, recentSessions] =
     await Promise.all([
@@ -40,6 +41,14 @@ export async function buildGenerationContext(
     .filter((l) => l.category === "mobility")
     .map((l) => l.exerciseId);
 
+  // How the last few sessions actually felt — newest first. A session after a
+  // 9/10 grinder should not be blindly progressed.
+  const recentFeedback = recentSessions
+    .filter((s) => s.date < date && s.feedback)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 3)
+    .map((s) => s.feedback!);
+
   return {
     userId,
     date,
@@ -50,6 +59,8 @@ export async function buildGenerationContext(
     phase,
     history,
     recentCorrectiveIds,
+    plannedDay,
+    recentFeedback,
   };
 }
 
@@ -63,7 +74,14 @@ const STRENGTH_CATEGORIES = new Set(["primary", "secondary", "accessory"]);
 // STRENGTH lift only if it's in their active-lift list. Empty active list means
 // unrestricted (legacy / pre-onboarding). Free-text override is keyword-scanned
 // for equipment terms; bodyweight is always allowed (PRD §6.1, §6.5, onboarding).
-export function eligibleExercises(ctx: GenerationContext) {
+// Takes only the fields it actually needs, so the plan layer (which has no full
+// GenerationContext) can reuse it rather than duplicating the filter.
+export type EligibilityContext = Pick<
+  GenerationContext,
+  "profile" | "exclusions" | "activeOverride" | "library"
+>;
+
+export function eligibleExercises(ctx: EligibilityContext) {
   const excludedIds = new Set(
     ctx.exclusions.map((e) => e.exerciseId).filter(Boolean) as string[],
   );

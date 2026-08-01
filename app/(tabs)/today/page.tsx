@@ -1,8 +1,11 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getRepo, todayISO } from "@/lib/db";
 import { requireUserId } from "@/lib/auth";
 import { allowedEquipment } from "@/lib/ai/context";
+import { nextPlannedDayAfter, plannedDayForDate } from "@/lib/ai/plan";
 import { needsOnboarding } from "@/lib/onboarding";
+import { fmtWeekdayDate } from "@/lib/domain/dates";
 import { resolveUnits } from "@/lib/domain/units";
 import { generateTodayAction } from "./actions";
 import TodayClient, { type SwapExercise } from "./TodayClient";
@@ -82,21 +85,75 @@ export default async function TodayPage() {
   }
 
   if (!session) {
+    // Where today sits in the active block, so the empty state says something
+    // useful: a planned focus, or that today is a rest day and when the next one is.
+    const plan = await repo.getActivePlan(userId);
+    const planned = plannedDayForDate(plan, date);
+    const next = plan && !planned ? nextPlannedDayAfter(plan, date) : null;
+
     return (
       <>
         <div className="topbar">
           <div className="eyebrow">{prettyDate(date)}</div>
-          <h1>Today&apos;s session</h1>
+          <h1>{planned ? planned.focus : "Today's session"}</h1>
+          {planned && (
+            <div className="meta">
+              <span className={`intensity-badge ${planned.intensity}`}>
+                {planned.intensity}
+              </span>
+              {planned.emphasis.length > 0 && (
+                <span>{planned.emphasis.join(" · ")}</span>
+              )}
+            </div>
+          )}
         </div>
-        <p className="empty">
-          No session yet. Generate one from your profile, constraints, and logged
-          history.
-        </p>
+
+        {planned ? (
+          <p className="empty">
+            Today&apos;s slot in your plan. Generate it to get real sets, reps and
+            loads off your logged history.
+          </p>
+        ) : next ? (
+          <p className="empty">
+            Rest day. Your next session is {fmtWeekdayDate(next.date)} —{" "}
+            {next.focus}. Training anyway is fine; it just won&apos;t replace a
+            planned day.
+          </p>
+        ) : !plan ? (
+          <p className="empty">
+            No training block yet. Build one from the Plan tab, or generate a
+            one-off session now.
+          </p>
+        ) : (
+          <p className="empty">
+            No session yet. Generate one from your profile, constraints, and logged
+            history.
+          </p>
+        )}
+
         <form action={generateTodayAction} className="field">
-          <button className="btn-primary" type="submit">
-            Generate today&apos;s workout
+          <button
+            className={planned || !plan ? "btn-primary" : "btn-ghost"}
+            type="submit"
+            style={{ width: "100%" }}
+          >
+            {planned
+              ? "Generate today's session"
+              : next
+                ? "Train anyway"
+                : "Generate today's workout"}
           </button>
         </form>
+
+        {!plan && (
+          <Link
+            href="/plan"
+            className="btn-ghost"
+            style={{ display: "block", textAlign: "center", marginTop: 10 }}
+          >
+            Build my 4-week program
+          </Link>
+        )}
       </>
     );
   }

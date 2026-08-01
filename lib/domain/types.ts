@@ -55,6 +55,11 @@ export type CreatineStatus = "yes" | "no" | "considering";
 // chosen as the first onboarding step. Storage is always canonical metric (PRD §6.6).
 export type UnitsPreference = "imperial" | "metric";
 
+// Day of week, matching JS `Date.getDay()` — 0 = Sunday … 6 = Saturday. The user
+// picks the days they actually train in onboarding; the 4-week plan is laid out
+// on exactly those days.
+export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
 // Full user profile captured across onboarding (PRD §6.6). `id` is the auth user id.
 // Most fields are optional because onboarding saves incrementally, step by step.
 export interface Profile {
@@ -66,6 +71,9 @@ export interface Profile {
   weightKg?: number;
   primaryGoal?: string;
   experienceLevel?: ExperienceLevel;
+  // The specific weekdays the user trains. daysPerWeek is derived from its length
+  // and kept in sync so existing consumers keep working.
+  preferredWorkoutDays?: Weekday[];
   daysPerWeek?: number;
   sessionDurationMinutes?: number; // end-to-end incl. warm-up (PRD §11.4)
   equipmentAccess?: EquipmentAccess;
@@ -186,14 +194,20 @@ export interface ProgramLift {
   cues: string[];
   lastTime: LastTime | null;
   pr: PRReference | null;
-  // Duration bookkeeping so the whole session fits the 60-min window (PRD §11.4).
+  // Duration bookkeeping so the whole session fits the available window.
   estimatedMinutes: number;
+  // Passed on mid-session without swapping it for anything else. Session-only —
+  // skipping never writes a standing Exclusion (that's what Swap is for).
+  skipped?: boolean;
 }
 
 export interface Program {
   phase: TrainingPhase;
   warmupMinutes: number;
-  targetMinutes: number;
+  targetMinutes: number; // total time the user said they have, end to end
+  // Reserved slack for rest overruns, waiting on equipment, changing plates. The
+  // generator's real budget is targetMinutes - warmupMinutes - bufferMinutes.
+  bufferMinutes: number;
   estimatedMinutes: number;
   lifts: ProgramLift[];
   // Short note on the active context used (e.g. which override was applied).
@@ -202,6 +216,14 @@ export interface Program {
 
 export type SessionStatus = "generated" | "in_progress" | "completed";
 
+// How the session actually felt, captured when the user ends it. Drives the
+// adaptation of the remaining days in the training plan.
+export interface SessionFeedback {
+  effort: number; // 1–10 perceived effort / strain
+  notes: string; // free text — "lower back felt it on the last deadlift set"
+  completedAt: string; // ISO timestamp
+}
+
 export interface Session {
   id: string;
   userId: string;
@@ -209,4 +231,60 @@ export interface Session {
   program: Program;
   status: SessionStatus;
   createdAt: string;
+  // Set when the session was materialized from a day in a training plan.
+  planId?: string | null;
+  planDayId?: string | null;
+  feedback?: SessionFeedback | null;
+}
+
+// ---------------------------------------------------------------------------
+// Multi-week training plan
+//
+// A plan is an OUTLINE, not a set of full prescriptions: each planned day carries
+// its focus, emphasis and intensity, and the full sets/reps/loads are generated
+// on demand when the day is opened — so week-3 targets aren't guessed before any
+// of week 1 has been logged.
+// ---------------------------------------------------------------------------
+
+export type PlanIntensity = "light" | "moderate" | "hard";
+
+export interface PlannedDay {
+  id: string; // stable — sessions and adaptations reference this
+  date: string; // ISO date (yyyy-mm-dd)
+  weekIndex: number; // 0-based within the block
+  weekday: Weekday;
+  focus: string; // e.g. "Lower body — squat emphasis"
+  emphasis: string[]; // muscle groups this day drives
+  intensity: PlanIntensity;
+  // Suggested lifts for this day, by exercise id — a hint for generation, not a
+  // hard prescription.
+  candidateExerciseIds: string[];
+  // Why this day looks like this, or why it was changed by an adaptation.
+  note: string | null;
+  adapted?: boolean;
+}
+
+export interface PlanWeek {
+  weekIndex: number;
+  intent: string; // e.g. "Accumulation", "Deload"
+  days: PlannedDay[];
+}
+
+export interface PlanOutline {
+  summary: string;
+  weeks: PlanWeek[];
+}
+
+export type PlanStatus = "active" | "completed" | "archived";
+
+export interface TrainingPlan {
+  id: string;
+  userId: string;
+  startsOn: string; // ISO date
+  endsOn: string; // ISO date
+  weeks: number;
+  status: PlanStatus;
+  outline: PlanOutline;
+  createdAt: string;
+  updatedAt: string;
 }

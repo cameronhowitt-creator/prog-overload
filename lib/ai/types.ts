@@ -10,8 +10,10 @@ import type {
   Exercise,
   LastTime,
   LocationOverride,
+  PlannedDay,
   PR,
   Profile,
+  SessionFeedback,
   TrainingPhase,
 } from "../domain/types";
 
@@ -33,6 +35,12 @@ export interface GenerationContext {
   history: Record<string, ExerciseHistory>;
   // Correctives seen in recent sessions, so the rotation avoids repeats (PRD §6.2).
   recentCorrectiveIds: string[];
+  // The day in the active 4-week plan this session materializes, when there is
+  // one. Constrains focus/emphasis/intensity so the block holds together.
+  plannedDay?: PlannedDay | null;
+  // How the last few sessions actually felt, newest first — so a session after a
+  // brutal one is programmed lighter, not blindly progressed.
+  recentFeedback: SessionFeedback[];
 }
 
 export interface LiftSelection {

@@ -2,8 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getRepo } from "@/lib/db";
+import { getRepo, todayISO } from "@/lib/db";
 import { requireUserId, signOut } from "@/lib/auth";
+import { generateTrainingPlan } from "@/lib/ai/plan";
 
 export async function signOutAction() {
   await signOut();
@@ -15,6 +16,7 @@ import type {
   EquipmentAccess,
   Profile,
   UnitsPreference,
+  Weekday,
 } from "@/lib/domain/types";
 import { resolveUnits, toCanonicalWeightKg } from "@/lib/domain/units";
 
@@ -27,7 +29,35 @@ export async function setUnitsAction(formData: FormData) {
   await repo.updateProfile((await requireUserId()), { unitsPreference: u as UnitsPreference });
   revalidatePath("/profile");
   revalidatePath("/today");
-  revalidatePath("/history");
+  revalidatePath("/log");
+}
+
+// Change which weekdays the user trains. daysPerWeek is derived from the count so
+// it stays consistent for anything that still reads it. Optionally rebuilds the
+// 4-week block, since an existing block is laid out on the OLD days.
+export async function setTrainingDaysAction(input: {
+  days: Weekday[];
+  rebuildPlan: boolean;
+}): Promise<void> {
+  const days = [...new Set(input.days)]
+    .filter((d): d is Weekday => d >= 0 && d <= 6)
+    .sort((a, b) => a - b);
+  if (days.length === 0) return;
+
+  const repo = getRepo();
+  const userId = await requireUserId();
+  await repo.updateProfile(userId, {
+    preferredWorkoutDays: days,
+    daysPerWeek: days.length,
+  });
+
+  if (input.rebuildPlan) {
+    await generateTrainingPlan(repo, userId, todayISO());
+  }
+
+  revalidatePath("/profile");
+  revalidatePath("/plan");
+  revalidatePath("/today");
 }
 
 // Inline profile edits from the Profile tab — weight, primary goal, creatine

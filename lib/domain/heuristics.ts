@@ -54,6 +54,23 @@ export function repRangeFor(phase: TrainingPhase): { low: number; high: number }
 export const DEFAULT_SESSION_MINUTES = 60;
 export const DEFAULT_WARMUP_MINUTES = 8; // 7–10 min dynamic warm-up (PRD §5)
 
+// Real-world slack carved OUT of the stated session time: rest that runs long,
+// waiting for a rack or machine to free up, loading and stripping plates. Without
+// it a "60 min" session reliably overruns.
+export const DEFAULT_BUFFER_MINUTES = 10;
+
+// Minutes actually available for prescribed lifts, once the warm-up and the
+// buffer are taken off the top. This — not the raw session length — is the budget
+// both generators size a session against.
+export function liftingBudgetMinutes(
+  sessionMinutes: number = DEFAULT_SESSION_MINUTES,
+): number {
+  return Math.max(
+    15,
+    sessionMinutes - DEFAULT_WARMUP_MINUTES - DEFAULT_BUFFER_MINUTES,
+  );
+}
+
 // Rough per-lift time estimate for session sizing so the whole thing fits the
 // 60-min window (PRD §6.2, §11.4): work + rest across all sets, in minutes.
 export function estimateLiftMinutes(

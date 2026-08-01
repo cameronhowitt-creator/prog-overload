@@ -47,8 +47,8 @@ as the fallback.
 
 ### Enable Supabase (production / multi-user)
 
-1. Apply the schema: paste `supabase/migrations/0001_init.sql` into the Supabase SQL
-   editor and run it (creates the user-scoped tables + RLS).
+1. Apply the schema: paste each file in `supabase/migrations/` into the Supabase SQL
+   editor in order, `0001` through `0004` (creates the user-scoped tables + RLS).
 2. Seed the exercise catalog: `npm run seed:supabase`.
 3. Set `DATA_BACKEND=supabase` in `.env.local` (and the `NEXT_PUBLIC_SUPABASE_URL` /
    `SUPABASE_SERVICE_ROLE_KEY` values).
@@ -60,20 +60,23 @@ per-user scoping without a schema change (§5, §8).
 
 ```
 app/(auth)            Email/password sign-in + sign-up (Supabase)
-app/onboarding        11-step first-run flow (incremental save)
-app/(tabs)/today      Generate session · live logging · swap · in-flow exclude
-app/(tabs)/history    Per-lift weight charts + PR badges
-app/(tabs)/profile    Quick edits (weight/goal/creatine) · lifts · exclusions · sign out
+app/onboarding        12-step first-run flow (incremental save)
+app/(tabs)/log        Today's logged sets + earlier sessions · edit/delete a set
+app/(tabs)/today      Generate session · live logging · swap · skip · finish workout
+app/(tabs)/plan       4-week training block · per-day detail · generate a day
+app/(tabs)/profile    Quick edits · training days · lifts · exclusions · progress charts
 app/manifest.ts       PWA manifest (add-to-home-screen)
 middleware.ts         Auth + onboarding gating (Supabase mode only)
 lib/auth              getUser / getSession / signOut (mock in dev)
 lib/supabase          SSR browser/server/middleware clients
-lib/domain            Types, §7 heuristics, PR logic, formatters
-lib/db                Repository interface + local + supabase stores
-lib/ai                Context assembly, mock + Claude generators, swap builder
+lib/domain            Types, §7 heuristics, PR logic, formatters, date/weekday helpers
+lib/db                Repository interface + local + supabase stores, PR replay
+lib/ai                Context assembly, mock + Claude generators, swap builder,
+                      4-week plan generation + adaptation (plan.ts, *PlanGenerator.ts)
 lib/onboarding        New-vs-returning detection
 lib/seed              Starter exercise library + seed exclusion
-supabase/migrations   Postgres schema + RLS (0001 init, 0002 profiles/onboarding)
+supabase/migrations   Postgres schema + RLS (0001 init, 0002 profiles/onboarding,
+                      0003 units, 0004 plans/feedback/training days)
 ```
 
 ## Auth & onboarding
@@ -114,10 +117,13 @@ mock generator and the Claude prompt both work in the user's unit and store cano
 
 The local store is the default and fully exercised; the Supabase path is coded but
 needs your project to apply + verify:
-1. Apply `supabase/migrations/0001_init.sql`, `0002_profiles_and_onboarding.sql`,
-   then `0003_units_preference.sql` in the Supabase SQL editor.
+1. Apply `0001_init.sql`, `0002_profiles_and_onboarding.sql`, `0003_units_preference.sql`,
+   then `0004_plans_feedback_days.sql` in the Supabase SQL editor.
+   **All four are already applied to the live project — do not re-run them.** They are
+   written to be idempotent (`if not exists`) but re-running is still unnecessary.
 2. `npm run seed:supabase` to seed the exercise catalog.
-3. Set `DATA_BACKEND=supabase` in `.env.local`.
+3. Set `DATA_BACKEND=supabase` in `.env.local`. Until this flips, the `training_plans`
+   table and the new `sessions` feedback columns exist but go unused.
 4. Verify RLS with Supabase's `get_advisors` (security) — the policies scope every
    table to `auth.uid()`. Note: `SupabaseStore` currently uses the service-role key
    (server-trusted, manually scoped by user id); switching it to a session-scoped

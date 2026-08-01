@@ -3,7 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+// Log sits LEFT of Today: it's where you correct what you just entered, so it
+// reads as "what happened" -> "what's now" -> "what's next".
 const TABS = [
+  {
+    href: "/log",
+    label: "Log",
+    icon: (
+      <>
+        <path d="M9 11l2 2 4-4" />
+        <path d="M5 21h14a1 1 0 001-1V4a1 1 0 00-1-1H5a1 1 0 00-1 1v16a1 1 0 001 1z" />
+      </>
+    ),
+  },
   {
     href: "/today",
     label: "Today",
@@ -12,12 +24,13 @@ const TABS = [
     ),
   },
   {
-    href: "/history",
-    label: "History",
+    href: "/plan",
+    label: "Plan",
     icon: (
       <>
-        <path d="M3 3v18h18" />
-        <path d="M7 15l4-5 3 3 5-7" />
+        <rect x="3" y="4" width="18" height="17" rx="2" />
+        <path d="M3 10h18M8 2v4M16 2v4" />
+        <path d="M8 15h.01M12 15h.01M16 15h.01" />
       </>
     ),
   },

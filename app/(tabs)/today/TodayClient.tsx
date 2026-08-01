@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import type {
   MovementCategory,
@@ -22,10 +23,12 @@ import {
   type UnitsPreference,
 } from "@/lib/domain/units";
 import {
+  completeSessionAction,
   excludeAndRegenerateAction,
   excludeOriginalAction,
   generateTodayAction,
   logSetAction,
+  skipLiftAction,
   swapLiftAction,
 } from "./actions";
 
@@ -39,6 +42,16 @@ export type SwapExercise = {
   muscleGroups: string[];
   equipment: string;
 };
+
+// Plain-language anchor for the effort slider, so "7" means the same thing to
+// the user each week as it does to the model reading it back.
+function EFFORT_LABEL(v: number): string {
+  if (v <= 2) return "barely worked";
+  if (v <= 4) return "comfortable";
+  if (v <= 6) return "solid work";
+  if (v <= 8) return "hard, a few left in the tank";
+  return "everything I had";
+}
 
 const EQUIP_LABEL: Record<string, string> = {
   barbell: "Barbell",
@@ -74,6 +87,13 @@ export default function TodayClient({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
+  // Finish-workout flow state
+  const [finishOpen, setFinishOpen] = useState(false);
+  const [effort, setEffort] = useState(6);
+  const [notes, setNotes] = useState("");
+  const [finishing, setFinishing] = useState(false);
+  const [adaptNote, setAdaptNote] = useState<string | null>(null);
+
   // Swap flow state
   const [swapForId, setSwapForId] = useState<string | null>(null);
   const [swapQuery, setSwapQuery] = useState("");
@@ -88,11 +108,23 @@ export default function TodayClient({
     [program.lifts, swapForId],
   );
 
-  // Everything logged so far this session, in program order (PRD §6.3).
-  const loggedEntries = program.lifts
-    .map((l) => ({ lift: l, sets: logs[l.exerciseId] ?? [] }))
-    .filter((x) => x.sets.length > 0);
-  const totalLogged = loggedEntries.reduce((n, x) => n + x.sets.length, 0);
+  // Skipped lifts don't count toward the session's size or its time estimate.
+  const activeLifts = program.lifts.filter((l) => !l.skipped);
+  const skippedCount = program.lifts.length - activeLifts.length;
+  const liftingMinutes = activeLifts.reduce(
+    (n, l) => n + l.estimatedMinutes,
+    0,
+  );
+  const totalLogged = program.lifts.reduce(
+    (n, l) => n + (logs[l.exerciseId]?.length ?? 0),
+    0,
+  );
+  const totalVolumeKg = program.lifts.reduce(
+    (n, l) =>
+      n + (logs[l.exerciseId] ?? []).reduce((v, s) => v + s.weight * s.reps, 0),
+    0,
+  );
+  const isComplete = session.status === "completed";
 
   const swapOptions = useMemo(() => {
     if (!swapLift) return [];
@@ -183,6 +215,38 @@ export default function TodayClient({
     });
   }
 
+  // Skip / un-skip a lift for this session only.
+  function toggleSkip(lift: ProgramLift) {
+    const next = !lift.skipped;
+    startSwapTransition(async () => {
+      await skipLiftAction({
+        sessionId: session.id,
+        exerciseId: lift.exerciseId,
+        skipped: next,
+      });
+      showToast(next ? `Skipped ${lift.exerciseName}` : "Back in the session");
+    });
+  }
+
+  function finishSession() {
+    setFinishing(true);
+    startTransition(async () => {
+      const res = await completeSessionAction({
+        sessionId: session.id,
+        effort,
+        notes,
+      });
+      setFinishing(false);
+      setFinishOpen(false);
+      setAdaptNote(res.summary);
+      showToast(
+        res.changedDays > 0
+          ? `Workout logged — next ${res.changedDays === 1 ? "session" : `${res.changedDays} sessions`} adjusted`
+          : "Workout logged",
+      );
+    });
+  }
+
   function openSwap(lift: ProgramLift) {
     setSwapForId(lift.exerciseId);
     setSwapQuery("");
@@ -228,14 +292,18 @@ export default function TodayClient({
         <h1>Today&apos;s session</h1>
         <div className="meta">
           <span>
-            <b>{program.targetMinutes}</b> min target
+            <b>{program.targetMinutes}</b> min available
           </span>
           <span>
-            <b>{program.lifts.length}</b> lifts
+            <b>{activeLifts.length}</b> lifts
           </span>
           <span>
-            <b>~{program.warmupMinutes}</b> min warm-up
+            <b>~{liftingMinutes}</b> min lifting
           </span>
+        </div>
+        <div className="lift-tag" style={{ marginTop: 6 }}>
+          {program.warmupMinutes} min warm-up · {program.bufferMinutes ?? 10} min
+          buffer for rest, equipment &amp; plate changes
         </div>
         {program.contextNote && (
           <div className="lift-tag" style={{ marginTop: 8, color: "var(--primary)" }}>
@@ -244,12 +312,58 @@ export default function TodayClient({
         )}
       </div>
 
+      {isComplete && (
+        <div className="card primary">
+          <p className="lift-name">✓ Workout logged</p>
+          <div className="prescription" style={{ marginTop: 12 }}>
+            <div>
+              <div className="num">{totalLogged}</div>
+              <div className="lbl">sets</div>
+            </div>
+            <div>
+              <div className="num">
+                {totalVolumeKg > 0
+                  ? displayWeightNumber(totalVolumeKg, units).toLocaleString()
+                  : "—"}
+              </div>
+              <div className="lbl">{wLabel} volume</div>
+            </div>
+            <div>
+              <div className="num">{session.feedback?.effort ?? "—"}</div>
+              <div className="lbl">effort /10</div>
+            </div>
+            <div>
+              <div className="num">{skippedCount}</div>
+              <div className="lbl">skipped</div>
+            </div>
+          </div>
+          {session.feedback?.notes ? (
+            <div className="rationale" style={{ marginTop: 12 }}>
+              <b>Your notes:</b> {session.feedback.notes}
+            </div>
+          ) : null}
+          {adaptNote && (
+            <div className="rationale" style={{ marginTop: 10 }}>
+              <b>Plan updated:</b> {adaptNote}
+            </div>
+          )}
+          <Link
+            href="/plan"
+            className="btn-ghost"
+            style={{ display: "block", textAlign: "center", marginTop: 14 }}
+          >
+            See what&apos;s next
+          </Link>
+        </div>
+      )}
+
       {program.lifts.map((lift) => {
         const showLabel = lift.category !== lastCategory;
         lastCategory = lift.category;
         const isPrimary = lift.category === "primary";
         const logged = logs[lift.exerciseId] ?? [];
-        const done = logged.length >= lift.sets;
+        const skipped = !!lift.skipped;
+        const done = logged.length >= lift.sets || skipped;
         const d = draftFor(lift);
         const saving = savingId === lift.exerciseId;
         return (
@@ -259,26 +373,62 @@ export default function TodayClient({
                 {CATEGORY_LABEL[lift.category] ?? lift.category}
               </div>
             )}
-            <div className={`card${isPrimary ? " primary" : ""}`}>
+            <div
+              className={`card${isPrimary ? " primary" : ""}${skipped ? " skipped" : ""}`}
+            >
               <div className="row-top">
                 <div style={{ minWidth: 0 }}>
                   <p className="lift-name">
-                    {done ? "✓ " : ""}
+                    {skipped ? "" : done ? "✓ " : ""}
                     {lift.exerciseName}
                   </p>
                   <div className="lift-tag">{lift.muscleGroups.join(" · ")}</div>
                 </div>
-                <button className="swap-btn" type="button" onClick={() => openSwap(lift)}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path d="M17 1l4 4-4 4" />
-                    <path d="M3 11V9a4 4 0 014-4h14" />
-                    <path d="M7 23l-4-4 4-4" />
-                    <path d="M21 13v2a4 4 0 01-4 4H3" />
-                  </svg>
-                  Swap
-                </button>
+                <div className="row-actions">
+                  <button
+                    className="swap-btn"
+                    type="button"
+                    onClick={() => toggleSkip(lift)}
+                    disabled={pending}
+                  >
+                    {skipped ? (
+                      <>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path d="M3 10h11a4 4 0 010 8h-3" />
+                          <path d="M7 6L3 10l4 4" />
+                        </svg>
+                        Undo
+                      </>
+                    ) : (
+                      <>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path d="M5 4l10 8-10 8z" />
+                          <path d="M19 4v16" />
+                        </svg>
+                        Skip
+                      </>
+                    )}
+                  </button>
+                  {!skipped && (
+                    <button className="swap-btn" type="button" onClick={() => openSwap(lift)}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path d="M17 1l4 4-4 4" />
+                        <path d="M3 11V9a4 4 0 014-4h14" />
+                        <path d="M7 23l-4-4 4-4" />
+                        <path d="M21 13v2a4 4 0 01-4 4H3" />
+                      </svg>
+                      Swap
+                    </button>
+                  )}
+                </div>
               </div>
 
+              {skipped ? (
+                <div className="log-done">
+                  Skipped today — not swapped, just passed on.
+                </div>
+              ) : (
+                <>
               <div className="prescription">
                 <div>
                   <div className="num">{lift.sets}</div>
@@ -440,43 +590,103 @@ export default function TodayClient({
                   Don&apos;t program this again
                 </button>
               )}
+                </>
+              )}
             </div>
           </div>
         );
       })}
 
-      <form action={generateTodayAction} className="field" style={{ marginTop: 18 }}>
-        <button className="btn-ghost" type="submit" style={{ width: "100%" }}>
-          Regenerate session
-        </button>
-      </form>
-
-      {/* Pinned session log — the running list of logged sets with details,
-          fixed to the bottom of the session (PRD §6.3). */}
-      {totalLogged > 0 && (
-        <div className="session-log">
-          <div className="session-log-head">
-            Session log · {totalLogged} {totalLogged === 1 ? "set" : "sets"}
-          </div>
-          <div className="session-log-list">
-            {loggedEntries.map(({ lift, sets }) => (
-              <div className="session-log-group" key={lift.exerciseId}>
-                <div className="session-log-name">{lift.exerciseName}</div>
-                {sets.map((s, i) => (
-                  <div className="session-log-row" key={i}>
-                    <span className="sl-set">Set {i + 1}</span>
-                    <span className="sl-val">
-                      {s.weight ? formatWeight(s.weight, units) : "BW"} × {s.reps} reps
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
+      {!isComplete && (
+        <div className="finish-bar">
+          <button
+            className="btn-primary"
+            type="button"
+            onClick={() => setFinishOpen(true)}
+          >
+            Finish workout
+          </button>
+          <form action={generateTodayAction}>
+            <button className="btn-ghost" type="submit" style={{ width: "100%" }}>
+              Regenerate session
+            </button>
+          </form>
         </div>
       )}
 
       {toast && <div className="toast">{toast}</div>}
+
+      {/* End the session: how hard was it, and anything worth remembering. This
+          is what drives the rest of the block adapting. */}
+      {finishOpen && (
+        <div
+          className="scrim"
+          onClick={(e) => e.target === e.currentTarget && setFinishOpen(false)}
+        >
+          <div className="sheet">
+            <div className="sheet-handle" />
+            <h2>Log this workout</h2>
+            <div className="sub">
+              {totalLogged} {totalLogged === 1 ? "set" : "sets"} logged
+              {skippedCount > 0 && ` · ${skippedCount} skipped`}
+            </div>
+
+            <div className="field">
+              <label htmlFor="effort">
+                How hard did it feel? <b>{effort}/10</b> — {EFFORT_LABEL(effort)}
+              </label>
+              <input
+                id="effort"
+                className="effort-slider"
+                type="range"
+                min={1}
+                max={10}
+                step={1}
+                value={effort}
+                onChange={(e) => setEffort(Number(e.target.value))}
+              />
+              <div className="effort-scale">
+                <span>1 Easy</span>
+                <span>5 Solid</span>
+                <span>10 Everything I had</span>
+              </div>
+            </div>
+
+            <div className="field">
+              <label htmlFor="session-notes">Notes (optional)</label>
+              <textarea
+                id="session-notes"
+                rows={4}
+                placeholder="How did it feel? Anything that pushed you to a limit?"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+
+            <p className="empty" style={{ margin: "0 0 12px", textAlign: "left" }}>
+              High strain or notes about hitting a limit will ease off the rest of
+              your plan so you recover.
+            </p>
+
+            <button
+              className="btn-primary"
+              type="button"
+              onClick={finishSession}
+              disabled={finishing}
+            >
+              {finishing ? "Saving…" : "Save & finish"}
+            </button>
+            <button
+              className="btn-ghost"
+              type="button"
+              style={{ width: "100%", marginTop: 10 }}
+              onClick={() => setFinishOpen(false)}
+            >
+              Keep training
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Swap picker sheet (PRD §6.5) */}
       {swapLift && (

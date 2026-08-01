@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { getRepo, todayISO } from "@/lib/db";
 import { requireUserId } from "@/lib/auth";
 import { generateProgram } from "@/lib/ai";
+import { generateTrainingPlan, plannedDayForDate } from "@/lib/ai/plan";
 import type {
   ApproxDate,
   OnboardingLiftEntry,
@@ -77,7 +78,8 @@ export async function saveBaselinesAction(entries: OnboardingLiftEntry[]) {
   }
 }
 
-// Final step — stamp completion, generate the first (progressed) session, route in.
+// Final step — stamp completion, lay out the 4-week block on the user's chosen
+// days, generate today's session if today is one of them, route in.
 export async function completeOnboardingAction() {
   const repo = getRepo();
   const userId = await requireUserId();
@@ -87,18 +89,28 @@ export async function completeOnboardingAction() {
   });
 
   const date = todayISO();
-  const { program } = await generateProgram(repo, userId, date);
-  const session: Session = {
-    id: randomUUID(),
-    userId,
-    date,
-    program,
-    status: "generated",
-    createdAt: new Date().toISOString(),
-  };
-  await repo.saveSession(session);
+  const { plan } = await generateTrainingPlan(repo, userId, date);
+  const day = plannedDayForDate(plan, date);
+
+  // Only materialize a session when today is actually a training day — otherwise
+  // land them on Today's rest-day state with their plan already built.
+  if (day) {
+    const { program } = await generateProgram(repo, userId, date, "hypertrophy", day);
+    const session: Session = {
+      id: randomUUID(),
+      userId,
+      date,
+      program,
+      status: "generated",
+      createdAt: new Date().toISOString(),
+      planId: plan.id,
+      planDayId: day.id,
+    };
+    await repo.saveSession(session);
+  }
 
   revalidatePath("/today");
+  revalidatePath("/plan");
   revalidatePath("/profile");
   redirect("/today");
 }

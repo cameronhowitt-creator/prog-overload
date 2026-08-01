@@ -24,9 +24,12 @@ import type {
   Profile,
   RepBucket,
   Session,
+  TrainingPlan,
+  Weekday,
 } from "../domain/types";
 import { beatsPR, DEFAULT_SESSION_MINUTES, repBucketFor } from "../domain/heuristics";
 import { SEED_EXCLUSION, SEED_EXERCISES } from "../seed/exercises";
+import { replayPRs } from "./prReplay";
 import type { Repository } from "./repo";
 
 // Throw a descriptive error (with the Supabase code/details) on any failure.
@@ -76,6 +79,28 @@ const toSession = (r: any): Session => ({
   program: r.program,
   status: r.status,
   createdAt: r.created_at,
+  planId: r.plan_id ?? null,
+  planDayId: r.plan_day_id ?? null,
+  // Feedback is stored as three flat columns; it's only "there" once the session
+  // was actually ended, which is what completed_at marks.
+  feedback: r.completed_at
+    ? {
+        effort: r.effort_rating ?? 0,
+        notes: r.session_notes ?? "",
+        completedAt: r.completed_at,
+      }
+    : null,
+});
+const toPlan = (r: any): TrainingPlan => ({
+  id: r.id,
+  userId: r.user_id,
+  startsOn: r.starts_on,
+  endsOn: r.ends_on,
+  weeks: r.weeks,
+  status: r.status,
+  outline: r.outline,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
 });
 const toLoggedSet = (r: any): LoggedSet => ({
   id: r.id,
@@ -140,6 +165,7 @@ export class SupabaseStore implements Repository {
       weightKg: r.weight_kg != null ? Number(r.weight_kg) : undefined,
       primaryGoal: r.primary_goal ?? undefined,
       experienceLevel: r.experience_level ?? undefined,
+      preferredWorkoutDays: (r.preferred_workout_days ?? []) as Weekday[],
       daysPerWeek: r.days_per_week ?? undefined,
       sessionDurationMinutes: r.session_duration_minutes ?? undefined,
       equipmentAccess: r.equipment_access ?? undefined,
@@ -245,6 +271,7 @@ export class SupabaseStore implements Repository {
       ["weightKg", "weight_kg"],
       ["primaryGoal", "primary_goal"],
       ["experienceLevel", "experience_level"],
+      ["preferredWorkoutDays", "preferred_workout_days"],
       ["daysPerWeek", "days_per_week"],
       ["sessionDurationMinutes", "session_duration_minutes"],
       ["equipmentAccess", "equipment_access"],
@@ -431,6 +458,22 @@ export class SupabaseStore implements Repository {
     return (data ?? []).map(toSession);
   }
 
+  async listSessionsBetween(
+    userId: string,
+    startISO: string,
+    endISO: string,
+  ): Promise<Session[]> {
+    const { data, error } = await this.db
+      .from("sessions")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("date", startISO)
+      .lte("date", endISO)
+      .order("date", { ascending: true });
+    check(error, "select sessions in range");
+    return (data ?? []).map(toSession);
+  }
+
   async saveSession(session: Session): Promise<Session> {
     // Upsert on the (user_id, date) unique constraint — one session per day.
     const { error } = await this.db.from("sessions").upsert(
@@ -441,6 +484,8 @@ export class SupabaseStore implements Repository {
         program: session.program,
         status: session.status,
         created_at: session.createdAt,
+        plan_id: session.planId ?? null,
+        plan_day_id: session.planDayId ?? null,
       },
       { onConflict: "user_id,date" },
     );
@@ -451,11 +496,21 @@ export class SupabaseStore implements Repository {
   async updateSession(
     userId: string,
     id: string,
-    patch: Partial<Pick<Session, "program" | "status">>,
+    patch: Partial<
+      Pick<Session, "program" | "status" | "feedback" | "planId" | "planDayId">
+    >,
   ): Promise<Session> {
     const row: Record<string, unknown> = {};
     if (patch.program !== undefined) row.program = patch.program;
     if (patch.status !== undefined) row.status = patch.status;
+    if (patch.planId !== undefined) row.plan_id = patch.planId;
+    if (patch.planDayId !== undefined) row.plan_day_id = patch.planDayId;
+    if (patch.feedback !== undefined) {
+      // Feedback flattens into three columns; null clears all three.
+      row.effort_rating = patch.feedback?.effort ?? null;
+      row.session_notes = patch.feedback?.notes ?? null;
+      row.completed_at = patch.feedback?.completedAt ?? null;
+    }
     const { error } = await this.db
       .from("sessions")
       .update(row)
@@ -465,6 +520,80 @@ export class SupabaseStore implements Repository {
     const s = await this.getSession(userId, id);
     if (!s) throw new Error("Session not found");
     return s;
+  }
+
+  // Training plans -----------------------------------------------------------
+  async getActivePlan(userId: string): Promise<TrainingPlan | null> {
+    const { data, error } = await this.db
+      .from("training_plans")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .order("starts_on", { ascending: false })
+      .limit(1);
+    check(error, "select active training_plan");
+    return data && data[0] ? toPlan(data[0]) : null;
+  }
+
+  async getPlan(userId: string, id: string): Promise<TrainingPlan | null> {
+    const { data, error } = await this.db
+      .from("training_plans")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("id", id)
+      .maybeSingle();
+    check(error, "select training_plan");
+    return data ? toPlan(data) : null;
+  }
+
+  async savePlan(plan: TrainingPlan): Promise<TrainingPlan> {
+    // At most one active block per user (enforced by a partial unique index) —
+    // archive the previous one BEFORE inserting, or the insert violates it.
+    const { error: aErr } = await this.db
+      .from("training_plans")
+      .update({ status: "archived", updated_at: new Date().toISOString() })
+      .eq("user_id", plan.userId)
+      .eq("status", "active")
+      .neq("id", plan.id);
+    check(aErr, "archive previous training_plan");
+
+    const { data, error } = await this.db
+      .from("training_plans")
+      .upsert({
+        id: plan.id,
+        user_id: plan.userId,
+        starts_on: plan.startsOn,
+        ends_on: plan.endsOn,
+        weeks: plan.weeks,
+        status: plan.status,
+        outline: plan.outline,
+        created_at: plan.createdAt,
+        updated_at: plan.updatedAt,
+      })
+      .select("*")
+      .single();
+    check(error, "upsert training_plan");
+    return toPlan(data);
+  }
+
+  async updatePlan(
+    userId: string,
+    id: string,
+    patch: Partial<Pick<TrainingPlan, "outline" | "status" | "endsOn">>,
+  ): Promise<TrainingPlan> {
+    const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (patch.outline !== undefined) row.outline = patch.outline;
+    if (patch.status !== undefined) row.status = patch.status;
+    if (patch.endsOn !== undefined) row.ends_on = patch.endsOn;
+    const { data, error } = await this.db
+      .from("training_plans")
+      .update(row)
+      .eq("user_id", userId)
+      .eq("id", id)
+      .select("*")
+      .single();
+    check(error, "update training_plan");
+    return toPlan(data);
   }
 
   // Logged sets --------------------------------------------------------------
@@ -502,6 +631,34 @@ export class SupabaseStore implements Repository {
       .single();
     check(error, "insert logged_set");
     return toLoggedSet(data);
+  }
+
+  async updateLoggedSet(
+    userId: string,
+    id: string,
+    patch: { weight?: number; reps?: number },
+  ): Promise<LoggedSet> {
+    const row: Record<string, unknown> = {};
+    if (patch.weight !== undefined) row.weight = patch.weight;
+    if (patch.reps !== undefined) row.reps = patch.reps;
+    const { data, error } = await this.db
+      .from("logged_sets")
+      .update(row)
+      .eq("user_id", userId)
+      .eq("id", id)
+      .select("*")
+      .single();
+    check(error, "update logged_set");
+    return toLoggedSet(data);
+  }
+
+  async deleteLoggedSet(userId: string, id: string): Promise<void> {
+    const { error } = await this.db
+      .from("logged_sets")
+      .delete()
+      .eq("user_id", userId)
+      .eq("id", id);
+    check(error, "delete logged_set");
   }
 
   async clearOnboardingSets(userId: string): Promise<void> {
@@ -588,5 +745,33 @@ export class SupabaseStore implements Repository {
       .single();
     check(error, "insert PR");
     return { pr: toPR(data), isNew: true };
+  }
+
+  async recomputePRsFor(userId: string, exerciseId: string): Promise<void> {
+    const sets = await this.listLoggedSets(userId, exerciseId); // ascending
+    const rebuilt = replayPRs(userId, exerciseId, sets);
+
+    const { error: dErr } = await this.db
+      .from("prs")
+      .delete()
+      .eq("user_id", userId)
+      .eq("exercise_id", exerciseId);
+    check(dErr, "delete prs for recompute");
+
+    if (rebuilt.length === 0) return;
+    const { error: iErr } = await this.db.from("prs").insert(
+      rebuilt.map((p) => ({
+        id: p.id,
+        user_id: p.userId,
+        exercise_id: p.exerciseId,
+        exercise_name: p.exerciseName,
+        rep_bucket: p.repBucket,
+        weight: p.weight,
+        reps: p.reps,
+        date_achieved: p.dateAchieved,
+        superseded: p.superseded,
+      })),
+    );
+    check(iErr, "insert recomputed prs");
   }
 }

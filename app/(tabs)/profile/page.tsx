@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getRepo, todayISO } from "@/lib/db";
 import { requireUserId } from "@/lib/auth";
 import ThemeToggle from "./ThemeToggle";
+import ProgressSection from "./ProgressSection";
+import TrainingDaysField from "./TrainingDaysField";
 import { displayWeightNumber, resolveUnits, weightUnit } from "@/lib/domain/units";
 import {
   addExclusionAction,
@@ -87,6 +89,10 @@ export default async function ProfilePage() {
         </Link>
       </div>
 
+      {/* Progress — collapsed by default; reference material, not mid-workout. */}
+      <div className="section-label">Progress</div>
+      <ProgressSection userId={userId} />
+
       {/* Appearance ---------------------------------------------------------*/}
       <div className="section-label">Appearance</div>
       <ThemeToggle />
@@ -103,6 +109,11 @@ export default async function ProfilePage() {
           Save units
         </button>
       </form>
+
+      {/* Training days — the days the 4-week plan is laid out on. Changing them
+          means the current block no longer matches, so offer a rebuild. */}
+      <div className="section-label">Training days</div>
+      <TrainingDaysField days={profile.preferredWorkoutDays ?? []} />
 
       {/* Quick edits — weight, goal, creatine (PRD §6.1): no onboarding needed. */}
       <div className="section-label">Quick edits</div>

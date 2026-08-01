@@ -14,6 +14,7 @@ import type {
   Profile,
   RepBucket,
   Session,
+  TrainingPlan,
 } from "../domain/types";
 
 export interface Repository {
@@ -48,12 +49,33 @@ export interface Repository {
   getSessionForDate(userId: string, dateISO: string): Promise<Session | null>;
   getSession(userId: string, id: string): Promise<Session | null>;
   listRecentSessions(userId: string, limit: number): Promise<Session[]>;
+  // Sessions falling in [startISO, endISO] inclusive — backs the plan calendar,
+  // which needs to know which planned days already have a session.
+  listSessionsBetween(
+    userId: string,
+    startISO: string,
+    endISO: string,
+  ): Promise<Session[]>;
   saveSession(session: Session): Promise<Session>;
   updateSession(
     userId: string,
     id: string,
-    patch: Partial<Pick<Session, "program" | "status">>,
+    patch: Partial<
+      Pick<Session, "program" | "status" | "feedback" | "planId" | "planDayId">
+    >,
   ): Promise<Session>;
+
+  // Multi-week training plans (outline only; prescriptions live on sessions) ---
+  getActivePlan(userId: string): Promise<TrainingPlan | null>;
+  getPlan(userId: string, id: string): Promise<TrainingPlan | null>;
+  // Persists a new block, archiving whatever block was previously active — at
+  // most one active plan per user.
+  savePlan(plan: TrainingPlan): Promise<TrainingPlan>;
+  updatePlan(
+    userId: string,
+    id: string,
+    patch: Partial<Pick<TrainingPlan, "outline" | "status" | "endsOn">>,
+  ): Promise<TrainingPlan>;
 
   // Logged sets — authoritative history going forward (PRD §6.3, §7) ---------
   listLoggedSets(userId: string, exerciseId?: string): Promise<LoggedSet[]>;
@@ -62,6 +84,13 @@ export interface Repository {
     // loggedAt may be supplied to backdate onboarding baselines; defaults to now.
     input: Omit<LoggedSet, "id" | "userId" | "loggedAt"> & { loggedAt?: string },
   ): Promise<LoggedSet>;
+  // Correct an errant entry after the fact (Log tab). Weight is canonical kg.
+  updateLoggedSet(
+    userId: string,
+    id: string,
+    patch: { weight?: number; reps?: number },
+  ): Promise<LoggedSet>;
+  deleteLoggedSet(userId: string, id: string): Promise<void>;
   // Most recent logged occurrence of a lift, summarized (PRD §6.2 last-time).
   lastTimeFor(userId: string, exerciseId: string): Promise<LastTime | null>;
   // Remove all onboarding-sourced baseline sets for a user, so re-entering the
@@ -78,4 +107,8 @@ export interface Repository {
   // Considers a logged set for a PR: overwrites the bucket PR only if it beats
   // the current one, retaining the beaten PR as history (PRD §6.4).
   considerSetForPR(userId: string, set: LoggedSet): Promise<{ pr: PR; isNew: boolean }>;
+  // Rebuild every bucket PR for one lift by replaying its logged sets in order.
+  // Required after an edit or delete: lowering a PR-setting set must demote the
+  // PR, which the incremental considerSetForPR path can't do.
+  recomputePRsFor(userId: string, exerciseId: string): Promise<void>;
 }

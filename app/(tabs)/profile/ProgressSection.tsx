@@ -1,17 +1,17 @@
+// Weight trends + current PRs per lift. Lives inside Profile as a collapsed
+// section rather than its own tab — it's reference material you go looking for,
+// not something you need mid-workout.
+
 import { getRepo } from "@/lib/db";
-import { requireUserId } from "@/lib/auth";
 import { CATEGORY_LABEL, fmtShortDate } from "@/lib/domain/format";
 import { formatWeight, resolveUnits } from "@/lib/domain/units";
 import type { MovementCategory } from "@/lib/domain/types";
 import LiftChart from "./LiftChart";
 
-export const dynamic = "force-dynamic";
-
 const ORDER: MovementCategory[] = ["primary", "secondary", "accessory", "core"];
 
-export default async function HistoryPage() {
+export default async function ProgressSection({ userId }: { userId: string }) {
   const repo = getRepo();
-  const userId = await requireUserId();
 
   const [sets, prs, exercises, profile] = await Promise.all([
     repo.listLoggedSets(userId),
@@ -74,60 +74,58 @@ export default async function HistoryPage() {
     });
   }
 
-  const hasData = rows.length > 0;
-
   return (
-    <>
-      <div className="topbar">
-        <div className="eyebrow">Progress</div>
-        <h1>History &amp; PRs</h1>
+    <details className="collapse">
+      <summary>
+        <span>Progress &amp; PRs</span>
+        <span className="badge-muted">
+          {rows.length} {rows.length === 1 ? "lift" : "lifts"}
+        </span>
+      </summary>
+      <div className="collapse-body">
+        {rows.length === 0 && (
+          <p className="empty">
+            No logged history yet. Log sets during a workout and your lifts appear
+            here with weight trends and PRs.
+          </p>
+        )}
+
+        {ORDER.map((cat) => {
+          const catRows = rows
+            .filter((r) => r.category === cat)
+            .sort((a, b) => a.name.localeCompare(b.name));
+          if (catRows.length === 0) return null;
+          return (
+            <div key={cat}>
+              <div className="section-label">{CATEGORY_LABEL[cat]}</div>
+              {catRows.map((r) => (
+                <div className="card" key={r.exerciseId}>
+                  <div className="row-top" style={{ alignItems: "center" }}>
+                    <div className="lift-name">{r.name}</div>
+                    {r.prWeight !== null && (
+                      <div className="pr-badge">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2l2.9 6.6L22 9.3l-5 4.9 1.2 7.1L12 17.8l-6.2 3.5L7 14.2 2 9.3l7.1-.7z" />
+                        </svg>
+                        {formatWeight(r.prWeight, units)} PR
+                      </div>
+                    )}
+                  </div>
+                  <LiftChart weights={r.weights} />
+                  <div className="hist-foot">
+                    <span>{r.prBucket ? `${r.prBucket} rep bucket` : "logged"}</span>
+                    <span>
+                      Last:{" "}
+                      <b>{r.lastWeight ? formatWeight(r.lastWeight, units) : "BW"}</b>{" "}
+                      × {r.lastReps} on {fmtShortDate(r.lastDate)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
-
-      {!hasData && (
-        <p className="empty">
-          No logged history yet. Log sets during a workout and your lifts appear
-          here with weight trends and PRs.
-        </p>
-      )}
-
-      {ORDER.map((cat) => {
-        const catRows = rows
-          .filter((r) => r.category === cat)
-          .sort((a, b) => a.name.localeCompare(b.name));
-        if (catRows.length === 0) return null;
-        return (
-          <div key={cat}>
-            <div className="section-label">{CATEGORY_LABEL[cat]}</div>
-            {catRows.map((r) => (
-              <div className="card" key={r.exerciseId}>
-                <div className="row-top" style={{ alignItems: "center" }}>
-                  <div className="lift-name">{r.name}</div>
-                  {r.prWeight !== null && (
-                    <div className="pr-badge">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2l2.9 6.6L22 9.3l-5 4.9 1.2 7.1L12 17.8l-6.2 3.5L7 14.2 2 9.3l7.1-.7z" />
-                      </svg>
-                      {formatWeight(r.prWeight, units)} PR
-                    </div>
-                  )}
-                </div>
-                <LiftChart weights={r.weights} />
-                <div className="hist-foot">
-                  <span>
-                    {r.prBucket ? `${r.prBucket} rep bucket` : "logged"}
-                  </span>
-                  <span>
-                    Last:{" "}
-                    <b>{r.lastWeight ? formatWeight(r.lastWeight, units) : "BW"}</b>{" "}
-                    × {r.lastReps} on {fmtShortDate(r.lastDate)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-      })}
-      <div style={{ height: 24 }} />
-    </>
+    </details>
   );
 }
