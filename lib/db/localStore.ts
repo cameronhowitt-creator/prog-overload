@@ -16,9 +16,11 @@ import type {
   Profile,
   RepBucket,
   Session,
+  TrainingPlan,
 } from "../domain/types";
 import { beatsPR, DEFAULT_SESSION_MINUTES, repBucketFor } from "../domain/heuristics";
 import { SEED_EXCLUSION, SEED_EXERCISES } from "../seed/exercises";
+import { replayPRs } from "./prReplay";
 import type { Repository } from "./repo";
 
 interface DBShape {
@@ -29,6 +31,7 @@ interface DBShape {
   sessions: Session[];
   loggedSets: LoggedSet[];
   prs: PR[];
+  plans: TrainingPlan[];
   seededUsers: string[];
 }
 
@@ -44,6 +47,7 @@ function emptyDB(): DBShape {
     sessions: [],
     loggedSets: [],
     prs: [],
+    plans: [],
     seededUsers: [],
   };
 }
@@ -61,6 +65,8 @@ async function load(): Promise<DBShape> {
     // The exercise library is code-owned; always refresh it from seed so library
     // edits ship without a data migration.
     parsed.exercises = SEED_EXERCISES;
+    // Collections added after a store file was first written.
+    parsed.plans ??= [];
     return parsed;
   } catch {
     return emptyDB();
@@ -257,6 +263,17 @@ export class LocalStore implements Repository {
       .slice(0, limit);
   }
 
+  async listSessionsBetween(
+    userId: string,
+    startISO: string,
+    endISO: string,
+  ): Promise<Session[]> {
+    const db = await load();
+    return db.sessions
+      .filter((s) => s.userId === userId && s.date >= startISO && s.date <= endISO)
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
   async saveSession(session: Session): Promise<Session> {
     return mutate((db) => {
       // One session per user per date: replace any existing.
@@ -271,13 +288,57 @@ export class LocalStore implements Repository {
   async updateSession(
     userId: string,
     id: string,
-    patch: Partial<Pick<Session, "program" | "status">>,
+    patch: Partial<
+      Pick<Session, "program" | "status" | "feedback" | "planId" | "planDayId">
+    >,
   ): Promise<Session> {
     return mutate((db) => {
       const s = db.sessions.find((x) => x.userId === userId && x.id === id);
       if (!s) throw new Error("Session not found");
       Object.assign(s, patch);
       return s;
+    });
+  }
+
+  // Training plans -----------------------------------------------------------
+  async getActivePlan(userId: string): Promise<TrainingPlan | null> {
+    const db = await load();
+    return (
+      db.plans
+        .filter((p) => p.userId === userId && p.status === "active")
+        .sort((a, b) => b.startsOn.localeCompare(a.startsOn))[0] ?? null
+    );
+  }
+
+  async getPlan(userId: string, id: string): Promise<TrainingPlan | null> {
+    const db = await load();
+    return db.plans.find((p) => p.userId === userId && p.id === id) ?? null;
+  }
+
+  async savePlan(plan: TrainingPlan): Promise<TrainingPlan> {
+    return mutate((db) => {
+      // At most one active block per user — archive whatever came before.
+      for (const p of db.plans) {
+        if (p.userId === plan.userId && p.status === "active" && p.id !== plan.id) {
+          p.status = "archived";
+        }
+      }
+      db.plans = db.plans.filter((p) => p.id !== plan.id);
+      db.plans.push(plan);
+      return plan;
+    });
+  }
+
+  async updatePlan(
+    userId: string,
+    id: string,
+    patch: Partial<Pick<TrainingPlan, "outline" | "status" | "endsOn">>,
+  ): Promise<TrainingPlan> {
+    return mutate((db) => {
+      const p = db.plans.find((x) => x.userId === userId && x.id === id);
+      if (!p) throw new Error("Training plan not found");
+      Object.assign(p, patch, { updatedAt: new Date().toISOString() });
+      return p;
     });
   }
 
@@ -306,6 +367,28 @@ export class LocalStore implements Repository {
       };
       db.loggedSets.push(row);
       return row;
+    });
+  }
+
+  async updateLoggedSet(
+    userId: string,
+    id: string,
+    patch: { weight?: number; reps?: number },
+  ): Promise<LoggedSet> {
+    return mutate((db) => {
+      const s = db.loggedSets.find((x) => x.userId === userId && x.id === id);
+      if (!s) throw new Error("Logged set not found");
+      if (patch.weight !== undefined) s.weight = patch.weight;
+      if (patch.reps !== undefined) s.reps = patch.reps;
+      return s;
+    });
+  }
+
+  async deleteLoggedSet(userId: string, id: string): Promise<void> {
+    await mutate((db) => {
+      db.loggedSets = db.loggedSets.filter(
+        (l) => !(l.userId === userId && l.id === id),
+      );
     });
   }
 
@@ -395,6 +478,19 @@ export class LocalStore implements Repository {
       };
       db.prs.push(pr);
       return { pr, isNew: true };
+    });
+  }
+
+  async recomputePRsFor(userId: string, exerciseId: string): Promise<void> {
+    await mutate((db) => {
+      const sets = db.loggedSets
+        .filter((l) => l.userId === userId && l.exerciseId === exerciseId)
+        .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+
+      db.prs = db.prs.filter(
+        (p) => !(p.userId === userId && p.exerciseId === exerciseId),
+      );
+      db.prs.push(...replayPRs(userId, exerciseId, sets));
     });
   }
 }

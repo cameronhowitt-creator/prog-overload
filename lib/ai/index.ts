@@ -3,7 +3,7 @@
 // live call errors, so "generate today's session" never hard-fails (PRD §6.2).
 
 import type { Repository } from "../db/repo";
-import type { Program, TrainingPhase } from "../domain/types";
+import type { PlannedDay, Program, TrainingPhase } from "../domain/types";
 import { assembleProgram } from "./assemble";
 import { AnthropicGenerator } from "./anthropicGenerator";
 import { buildGenerationContext } from "./context";
@@ -30,8 +30,11 @@ export async function generateProgram(
   userId: string,
   date: string,
   phase: TrainingPhase = "hypertrophy",
+  // When this day belongs to an active training block, its focus/emphasis/
+  // intensity constrain the session so the block actually holds together.
+  plannedDay: PlannedDay | null = null,
 ): Promise<GenerateResult> {
-  const ctx = await buildGenerationContext(repo, userId, date, phase);
+  const ctx = await buildGenerationContext(repo, userId, date, phase, plannedDay);
   const generator = selectGenerator();
 
   try {

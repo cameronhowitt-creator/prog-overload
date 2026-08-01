@@ -4,7 +4,13 @@
 // numbers are attached afterward by assembleProgram (PRD §6.2, §12).
 
 import Anthropic from "@anthropic-ai/sdk";
-import { repRangeFor, restDefaultsFor } from "../domain/heuristics";
+import {
+  DEFAULT_BUFFER_MINUTES,
+  DEFAULT_WARMUP_MINUTES,
+  liftingBudgetMinutes,
+  repRangeFor,
+  restDefaultsFor,
+} from "../domain/heuristics";
 import {
   displayWeightNumber,
   resolveUnits,
@@ -89,15 +95,38 @@ function buildPrompt(ctx: GenerationContext): string {
   const restIso = restDefaultsFor("accessory");
   const p = ctx.profile;
   const sessionMin = p.sessionDurationMinutes ?? 60;
+  const budgetMin = liftingBudgetMinutes(sessionMin);
 
   const unitLabel = units === "imperial" ? "lb" : "kg";
   const stepHint = units === "imperial" ? "~2.5–5 lb" : "~1–2.5 kg";
 
+  const pd = ctx.plannedDay;
+  const intensityGuide: Record<string, string> = {
+    light:
+      "LIGHT day: cut a set from each lift, stay 2-3 reps shy of failure (~RPE 6), and hold or slightly reduce load versus last time. This day exists to let them recover, not to progress.",
+    moderate:
+      "MODERATE day: normal working volume, ~RPE 7-8 on the main lift, standard conservative progression.",
+    hard: "HARD day: this is the week's hardest session. Push the primary lift to a genuine top set (~RPE 8-9) and keep accessory volume full.",
+  };
+
   return [
     `You are programming ONE strength session for a lifter.`,
     `Date: ${ctx.date}. Training phase: ${ctx.phase} (default rep range ${range.low}-${range.high}).`,
+    pd
+      ? `THIS SESSION IS PART OF A PLANNED BLOCK — week ${pd.weekIndex + 1}, and today's slot is: "${pd.focus}". Emphasis: ${pd.emphasis.join(", ") || "as titled"}. HONOUR THAT FOCUS — do not drift to another body part, because the rest of the week is built around this day covering it.`
+      : null,
+    pd ? `- ${intensityGuide[pd.intensity] ?? intensityGuide.moderate}` : null,
+    pd?.candidateExerciseIds.length
+      ? `- Prefer these lifts for this day where they fit: ${JSON.stringify(pd.candidateExerciseIds)}. You may substitute from the library if history or equipment makes a better choice.`
+      : null,
+    pd?.note ? `- Plan note for this day: ${pd.note}` : null,
+    ctx.recentFeedback.length
+      ? `RECENT SESSIONS, newest first: ${ctx.recentFeedback
+          .map((f) => `effort ${f.effort}/10${f.notes ? ` — ${JSON.stringify(f.notes)}` : ""}`)
+          .join("; ")}. If recent effort was high, or the notes describe pain or being pushed to a limit, back the load off and say so in the rationale rather than progressing on schedule.`
+      : null,
     `ALL weights in this prompt and in your response are in ${unitLabel}. Use ${unitLabel} everywhere, including weightTarget and any weights in the rationale. Progress loads by a clean ${stepHint} step when a lift has history.`,
-    `Session must fit ${sessionMin} minutes END TO END including a ~8 min warm-up.`,
+    `TIME BUDGET: the lifter has ${sessionMin} minutes end to end. Reserve ~${DEFAULT_WARMUP_MINUTES} min for the warm-up and a ${DEFAULT_BUFFER_MINUTES} min buffer for rest running long, waiting for equipment to free up, and loading/stripping plates. The lifts you prescribe must therefore fit ~${budgetMin} minutes of work + rest TOTAL (count ~45s of work per set plus the full rest interval between sets). Prefer fewer, better lifts over cramming — going over budget is a failure, not a bonus.`,
     ctx.activeOverride
       ? `TEMPORARY context override in effect (do not treat as permanent): "${ctx.activeOverride.context}". Only use exercises whose equipment is available in this context.`
       : `Equipment access: ${p.equipmentAccess ?? "full_gym"}. Only prescribe lifts this equipment supports.`,

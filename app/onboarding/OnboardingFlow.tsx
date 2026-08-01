@@ -6,7 +6,9 @@ import type {
   OnboardingLiftEntry,
   Profile,
   UnitsPreference,
+  Weekday,
 } from "@/lib/domain/types";
+import { WEEKDAY_ORDER, WEEKDAY_SHORT } from "@/lib/domain/dates";
 import {
   displayHeight,
   displayWeightNumber,
@@ -99,7 +101,6 @@ export default function OnboardingFlow({
       prefill.weightKg != null ? String(displayWeightNumber(prefill.weightKg, initUnits)) : "",
     primaryGoal: prefill.primaryGoal ?? "",
     experienceLevel: prefill.experienceLevel ?? "",
-    daysPerWeek: prefill.daysPerWeek?.toString() ?? "",
     sessionDurationMinutes: prefill.sessionDurationMinutes?.toString() ?? "60",
     equipmentAccess: prefill.equipmentAccess ?? "full_gym",
     injuryFlags: prefill.injuryFlags ?? [],
@@ -115,6 +116,12 @@ export default function OnboardingFlow({
     dislikedExercises: (prefill.dislikedExercises ?? []).join(", "),
   });
   const set = (patch: Partial<typeof f>) => setF((p) => ({ ...p, ...patch }));
+
+  // Preferred training days drive the whole 4-week plan layout, so they're their
+  // own state rather than a string field.
+  const [workoutDays, setWorkoutDays] = useState<Weekday[]>(
+    prefill.preferredWorkoutDays ?? [],
+  );
 
   const [selected, setSelected] = useState<Set<string>>(new Set(prefillActive));
   const [baselines, setBaselines] = useState<Record<string, BaselineDraft>>({});
@@ -155,7 +162,9 @@ export default function OnboardingFlow({
         };
       case "logistics":
         return {
-          daysPerWeek: num(f.daysPerWeek),
+          preferredWorkoutDays: workoutDays,
+          // Derived, so anything still reading daysPerWeek stays consistent.
+          daysPerWeek: workoutDays.length,
           sessionDurationMinutes: num(f.sessionDurationMinutes),
           equipmentAccess: f.equipmentAccess as Profile["equipmentAccess"],
         };
@@ -325,11 +334,50 @@ export default function OnboardingFlow({
 
         {/* LOGISTICS */}
         {step === "logistics" && (
-          <StepShell title="Training logistics" lead="How your week and gym look." onBack={back} onNext={next} pending={pending}>
+          <StepShell
+            title="Training logistics"
+            lead="How your week and gym look."
+            onBack={back}
+            onNext={next}
+            pending={pending}
+            nextDisabled={workoutDays.length === 0}
+          >
+            {/* The specific days matter, not just how many: the 4-week plan puts
+                one session on each of them and spaces hard days apart. */}
+            <div className="field">
+              <label id="days-label">Which days do you train?</label>
+              <div className="day-picker" role="group" aria-labelledby="days-label">
+                {WEEKDAY_ORDER.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={`day-chip${workoutDays.includes(d) ? " selected" : ""}`}
+                    aria-pressed={workoutDays.includes(d)}
+                    onClick={() =>
+                      setWorkoutDays((prev) =>
+                        prev.includes(d)
+                          ? prev.filter((x) => x !== d)
+                          : [...prev, d].sort((a, b) => a - b),
+                      )
+                    }
+                  >
+                    {WEEKDAY_SHORT[d]}
+                  </button>
+                ))}
+              </div>
+              <div className="lift-tag" style={{ marginTop: 8 }}>
+                {workoutDays.length === 0
+                  ? "Pick at least one day."
+                  : `${workoutDays.length} ${workoutDays.length === 1 ? "session" : "sessions"} a week.`}
+              </div>
+            </div>
             <Row>
-              <NumField label="Days / week" value={f.daysPerWeek} onChange={(v) => set({ daysPerWeek: v })} />
               <NumField label="Session (min)" value={f.sessionDurationMinutes} onChange={(v) => set({ sessionDurationMinutes: v })} />
             </Row>
+            <div className="lift-tag" style={{ margin: "-4px 0 14px" }}>
+              We reserve ~8 min for a warm-up and a 10 min buffer for rest, waiting
+              on equipment and plate changes — the rest is lifting.
+            </div>
             <Seg
               label="Equipment access"
               value={f.equipmentAccess}
@@ -474,7 +522,16 @@ export default function OnboardingFlow({
             <div className="ob-summary">
               <SummaryRow label="Goal" value={f.primaryGoal || "—"} onEdit={() => goto("goals")} />
               <SummaryRow label="Experience" value={f.experienceLevel || "—"} onEdit={() => goto("goals")} />
-              <SummaryRow label="Days / session" value={`${f.daysPerWeek || "?"}× · ${f.sessionDurationMinutes || 60} min`} onEdit={() => goto("logistics")} />
+              <SummaryRow
+                label="Training days"
+                value={
+                  workoutDays.length
+                    ? workoutDays.map((d) => WEEKDAY_SHORT[d]).join(", ")
+                    : "—"
+                }
+                onEdit={() => goto("logistics")}
+              />
+              <SummaryRow label="Session length" value={`${f.sessionDurationMinutes || 60} min`} onEdit={() => goto("logistics")} />
               <SummaryRow label="Equipment" value={f.equipmentAccess} onEdit={() => goto("logistics")} />
               <SummaryRow label="Lifts" value={`${selected.size} selected`} onEdit={() => goto("select")} />
               <SummaryRow label="Baselines" value={`${baselineCount} entered`} onEdit={() => goto("baselines")} />

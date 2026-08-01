@@ -327,47 +327,251 @@
   text-align: center;
 }
 
-/* Pinned session log — running list of logged sets, fixed to the bottom (§6.3) */
-.session-log {
-  position: sticky;
-  bottom: 0;
-  background: color-mix(in srgb, var(--canvas-parchment) 92%, transparent);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-top: 1px solid var(--hairline);
-  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-  max-height: 34dvh;
-  overflow-y: auto;
+/* Skip + finish --------------------------------------------------------------*/
+/* Two pill actions (Skip, Swap) share the header row on every lift card. */
+.row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
 }
-.session-log-head {
+/* A skipped lift stays visible so it can be undone, but recedes. */
+.card.skipped {
+  opacity: 0.6;
+}
+.card.skipped .lift-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--ink-muted-48);
+}
+
+.finish-bar {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 16px;
+}
+
+/* Effort slider — the 1-10 strain rating that drives plan adaptation. */
+.effort-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--divider-soft);
+  margin: 10px 0 6px;
+}
+.effort-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 3px solid var(--canvas);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
+  cursor: pointer;
+}
+.effort-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 3px solid var(--canvas);
+  cursor: pointer;
+}
+.effort-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--ink-muted-48);
+}
+
+/* Log tab — editable set rows -----------------------------------------------*/
+.log-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  padding: 8px 0;
+  border-top: 1px solid var(--divider-soft);
+}
+.log-edit-row:first-of-type {
+  border-top: none;
+}
+.log-edit-row.editing {
+  display: block;
+  padding: 10px 0;
+}
+.log-edit-row .sl-set {
+  color: var(--ink-muted-48);
+  min-width: 48px;
+}
+.log-edit-row .sl-val {
+  color: var(--ink);
+  font-weight: 600;
+  flex: 1;
+}
+.log-edit-row .text-link {
+  margin: 0;
+  flex-shrink: 0;
+}
+.log-edit-row .del {
+  margin-left: auto;
+}
+
+/* Collapsible sections (earlier sessions, Progress & PRs) ---------------------*/
+.collapse {
+  background: var(--surface-pearl);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  margin: 0 16px 10px;
+  overflow: hidden;
+}
+.collapse > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  min-height: 44px;
+}
+.collapse > summary::-webkit-details-marker {
+  display: none;
+}
+.collapse > summary::after {
+  content: "›";
+  color: var(--ink-muted-48);
+  font-size: 20px;
+  transition: transform 0.15s ease;
+}
+.collapse[open] > summary::after {
+  transform: rotate(90deg);
+}
+/* Cards inside a collapse already have the panel's padding around them. */
+.collapse-body {
+  padding: 0 0 8px;
+  border-top: 1px solid var(--divider-soft);
+}
+.collapse-body .card,
+.collapse-body .empty,
+.collapse-body .rationale {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+/* Plan tab -------------------------------------------------------------------*/
+.plan-day {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% - 32px);
+  margin: 0 16px 8px;
+  padding: 14px 16px;
+  text-align: left;
+  background: var(--surface-pearl);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  min-height: 44px;
+}
+.plan-day.today {
+  border-color: var(--primary);
+  border-width: 1.5px;
+}
+.plan-day.done {
+  opacity: 0.68;
+}
+.plan-day-main {
+  flex: 1;
+  min-width: 0;
+}
+.plan-day-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.plan-day-date {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: -0.08px;
   color: var(--ink-muted-48);
   text-transform: uppercase;
-  margin-bottom: 8px;
 }
-.session-log-group {
-  margin-bottom: 10px;
+.plan-day-note {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--primary-focus);
 }
-.session-log-name {
-  font-size: 13px;
+.plan-day-state {
+  font-size: 12px;
   font-weight: 600;
-  color: var(--ink);
-  margin-bottom: 2px;
+  color: var(--ink-muted-48);
+  flex-shrink: 0;
 }
-.session-log-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-  padding: 3px 0;
+
+.intensity-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border-radius: var(--radius-pill);
+  padding: 3px 8px;
+  background: var(--divider-soft);
+  color: var(--ink-muted-80);
 }
-.session-log-row .sl-set {
+.intensity-badge.hard {
+  background: var(--pr-bg);
+  color: var(--pr-ink);
+}
+.intensity-badge.moderate {
+  background: var(--rationale-bg);
+  color: var(--rationale-ink);
+}
+.intensity-badge.light {
+  background: var(--canvas-parchment);
   color: var(--ink-muted-48);
 }
-.session-log-row .sl-val {
-  color: var(--ink);
+
+/* Weekday picker (onboarding + profile) --------------------------------------*/
+.day-picker {
+  display: flex;
+  gap: 6px;
+}
+.day-chip {
+  flex: 1;
+  border: 1px solid var(--hairline);
+  background: var(--canvas);
+  color: var(--ink-muted-80);
+  border-radius: var(--radius-md);
+  padding: 12px 2px;
+  font-size: 12px;
   font-weight: 600;
+  min-height: 44px;
+}
+.day-chip.selected {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.checkline {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ink-muted-80);
+}
+.checkline input {
+  margin-top: 2px;
+  flex-shrink: 0;
 }
 
 /* Tab bar --------------------------------------------------------------------*/
@@ -549,7 +753,8 @@
   margin-bottom: 6px;
 }
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
@@ -558,6 +763,18 @@
   color: var(--ink);
   background: var(--canvas);
   min-height: 44px;
+}
+.field textarea {
+  font-family: inherit;
+  line-height: 1.4;
+  resize: vertical;
+}
+/* The effort slider draws its own track; the field input rules would fight it. */
+.field input.effort-slider {
+  border: none;
+  padding: 0;
+  min-height: 0;
+  background: var(--divider-soft);
 }
 .field .error {
   color: var(--danger);
